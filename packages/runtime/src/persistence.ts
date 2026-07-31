@@ -10,7 +10,7 @@
 //   - Debounced saves coalesce bursts of edits into one write.
 
 import type { Unsubscribe, WorkbookSnapshot } from "@opensheet/shared";
-import { WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
 import type { OpenSheetAPI, WorkbookInfo } from "./api.js";
 
 export interface StorageLike {
@@ -31,7 +31,13 @@ export interface Persistence {
   restore(): WorkbookInfo | null;
   /** Persist immediately (skips debounce). */
   saveNow(): void;
-  /** Listen to commits and save (debounced). Returns unsubscribe. */
+  /** Execute any pending debounced save NOW (pagehide/visibilitychange). */
+  flush(): void;
+  /**
+   * Listen to commits and save (debounced). The returned stop function also
+   * FLUSHES any pending save — stopping the listener never drops the last
+   * committed edit.
+   */
   autoSave(): Unsubscribe;
   /** Remove the stored snapshot (used by tests / "clear data"). */
   clear(): void;
@@ -40,8 +46,11 @@ export interface Persistence {
 const DEFAULT_KEY = "opensheet:workbook";
 
 /**
- * Structural + version validation. Anything that does not match the current
- * snapshot contract is rejected (returns false) WITHOUT touching storage.
+ * Full structural + range validation. Anything that does not match the
+ * current snapshot contract is rejected (returns false) WITHOUT touching
+ * storage. Checks beyond shape: positive integer sizes within MAX limits,
+ * freeze bounds, activeSheetId existence, cell key legality + bounds, and
+ * row-height/column-width entries.
  */
 export function validateSnapshot(value: unknown): value is WorkbookSnapshot {
   if (typeof value !== "object" || value === null) return false;
@@ -51,16 +60,56 @@ export function validateSnapshot(value: unknown): value is WorkbookSnapshot {
   if (typeof v.activeSheetId !== "string") return false;
   if (!Array.isArray(v.sheets) || v.sheets.length === 0) return false;
   if (typeof v.styles !== "object" || v.styles === null) return false;
-  return v.sheets.every(
-    (sheet) =>
-      typeof sheet === "object" &&
-      sheet !== null &&
-      typeof (sheet as Record<string, unknown>).id === "string" &&
-      typeof (sheet as Record<string, unknown>).name === "string" &&
-      typeof (sheet as Record<string, unknown>).rowCount === "number" &&
-      typeof (sheet as Record<string, unknown>).columnCount === "number" &&
-      typeof (sheet as Record<string, unknown>).cells === "object",
+  if (!v.sheets.every(validateWorksheetSnapshot)) return false;
+  // activeSheetId must reference an existing sheet.
+  return (v.sheets as unknown[]).some(
+    (sheet) => (sheet as Record<string, unknown>).id === v.activeSheetId,
   );
+}
+
+function validateWorksheetSnapshot(sheet: unknown): boolean {
+  if (typeof sheet !== "object" || sheet === null) return false;
+  const s = sheet as Record<string, unknown>;
+  if (typeof s.id !== "string" || typeof s.name !== "string") return false;
+  if (!isBoundedSize(s.rowCount, MAX_ROWS) || !isBoundedSize(s.columnCount, MAX_COLS)) return false;
+  const rowCount = s.rowCount as number;
+  const columnCount = s.columnCount as number;
+  const frozenRows = s.frozenRows ?? 0;
+  const frozenColumns = s.frozenColumns ?? 0;
+  if (!isFreeze(frozenRows, rowCount) || !isFreeze(frozenColumns, columnCount)) return false;
+  if (typeof s.cells !== "object" || s.cells === null) return false;
+  for (const key of Object.keys(s.cells as Record<string, unknown>)) {
+    if (!isCellKeyInBounds(key, rowCount, columnCount)) return false;
+  }
+  if (!isSizeMap(s.rowHeights, rowCount)) return false;
+  if (!isSizeMap(s.columnWidths, columnCount)) return false;
+  return true;
+}
+
+function isBoundedSize(value: unknown, max: number): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= max;
+}
+
+function isFreeze(value: unknown, max: number): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max;
+}
+
+/** "row:col" with non-negative integers inside the sheet bounds. */
+function isCellKeyInBounds(key: string, rowCount: number, columnCount: number): boolean {
+  const match = /^(\d+):(\d+)$/.exec(key);
+  if (match === null) return false;
+  return Number(match[1]) < rowCount && Number(match[2]) < columnCount;
+}
+
+/** Index → positive finite size, with valid integer indices inside bounds. */
+function isSizeMap(value: unknown, bound: number): boolean {
+  if (value === undefined) return true;
+  if (typeof value !== "object" || value === null) return false;
+  for (const [index, size] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^\d+$/.test(index) || Number(index) >= bound) return false;
+    if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) return false;
+  }
+  return true;
 }
 
 export function createPersistence(
@@ -116,6 +165,14 @@ export function createPersistence(
     writeRaw(JSON.stringify(api.getWorkbookSnapshot()));
   }
 
+  function flush(): void {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timer = undefined;
+    }
+    saveNow();
+  }
+
   function scheduleSave(): void {
     if (disposed) return;
     if (timer !== undefined) clearTimeout(timer);
@@ -131,10 +188,8 @@ export function createPersistence(
     const unsubscribe = api.onChange(() => scheduleSave());
     return () => {
       unsubscribe();
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
+      // Never drop the last committed edit when the host tears down.
+      flush();
     };
   }
 
@@ -147,5 +202,5 @@ export function createPersistence(
     }
   }
 
-  return { restore, saveNow, autoSave, clear };
+  return { restore, saveNow, flush, autoSave, clear };
 }

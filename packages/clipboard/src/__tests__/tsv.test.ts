@@ -40,6 +40,24 @@ describe("parseTSV", () => {
     expect(parseTSV("1\n2\n\n")).toEqual([[1], [2]]);
   });
 
+  it("keeps interior blank rows as [null] (positions do not shift)", () => {
+    expect(parseTSV("1\n\n2")).toEqual([[1], [null], [2]]);
+    // Round-trip a matrix containing a null row.
+    const matrix: CellPrimitive[][] = [[1], [null], [2]];
+    expect(parseTSV(cellsToTSV(matrix))).toEqual(matrix);
+  });
+
+  it("pads ragged rows with null into a rectangle", () => {
+    expect(parseTSV("a\tb\nc")).toEqual([
+      ["a", "b"],
+      ["c", null],
+    ]);
+    expect(parseTSV("a\tb\tc\nd")).toEqual([
+      ["a", "b", "c"],
+      ["d", null, null],
+    ]);
+  });
+
   it("unquotes quoted fields including escaped quotes", () => {
     expect(parseTSV('"he said ""hi"""\t"a\tb"')).toEqual([['he said "hi"', "a\tb"]]);
   });

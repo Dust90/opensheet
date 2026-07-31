@@ -196,4 +196,199 @@ describe("range.style command", () => {
       }),
     ).toThrow(/at least one style attribute/);
   });
+
+  it("M2.8: style undo preserves a cell that had a VALUE but no style", () => {
+    const { workbook, sheet, bus, history } = makeWorkbook();
+    // A1 has a value, no styleId.
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "cell.set", range: "A1", value: "hello" }],
+      atomic: true,
+      source: "user",
+    });
+    expect(sheet.getCell(0, 0)?.styleId).toBeUndefined();
+    history.clear();
+
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "range.style", range: "A1", style: { bold: true } }],
+      atomic: true,
+      source: "user",
+    });
+    expect(sheet.getCell(0, 0)?.styleId).toBeDefined();
+    expect(sheet.getCell(0, 0)?.value).toBe("hello");
+
+    history.undo(bus);
+    // Value survives; styleId reverts to undefined (NOT cell deletion).
+    expect(sheet.getCell(0, 0)?.value).toBe("hello");
+    expect(sheet.getCell(0, 0)?.styleId).toBeUndefined();
+
+    history.redo(bus);
+    expect(sheet.getCell(0, 0)?.value).toBe("hello");
+    expect(workbook.styles.get(sheet.getCell(0, 0)!.styleId!)?.bold).toBe(true);
+  });
 });
+
+describe("M2.8 value-write semantics", () => {
+  it("cell.set preserves styleId/numberFormat and clears the old formula", () => {
+    const { workbook, sheet, bus, history } = makeWorkbook();
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "range.style", range: "A1", style: { bold: true, backgroundColor: "#ffe08a" } }],
+      atomic: true,
+      source: "user",
+    });
+    const styleId = sheet.getCell(0, 0)!.styleId!;
+    history.clear();
+
+    // Edit the VALUE of a styled cell: style must survive.
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "cell.set", range: "A1", value: "edited" }],
+      atomic: true,
+      source: "user",
+    });
+    expect(sheet.getCell(0, 0)?.value).toBe("edited");
+    expect(sheet.getCell(0, 0)?.styleId).toBe(styleId);
+
+    history.undo(bus);
+    expect(sheet.getCell(0, 0)?.value).toBeNull(); // back to style-only cell
+    expect(sheet.getCell(0, 0)?.styleId).toBe(styleId);
+
+    history.redo(bus);
+    expect(sheet.getCell(0, 0)?.value).toBe("edited");
+    expect(sheet.getCell(0, 0)?.styleId).toBe(styleId);
+    expect(workbook.styles.get(styleId)?.bold).toBe(true);
+  });
+
+  it("range.write (TSV paste) preserves target formatting", () => {
+    const { sheet, bus, history } = makeWorkbook();
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [
+        { type: "range.write", range: "A1:B2", values: [["a", 1], ["b", 2]] },
+        { type: "range.style", range: "A1:B2", style: { italic: true } },
+      ],
+      atomic: true,
+      source: "user",
+    });
+    const styleId = sheet.getCell(0, 0)!.styleId!;
+    history.clear();
+
+    // Paste over the formatted range.
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "range.write", range: "A1:B2", values: [["x", 9], ["y", 8]] }],
+      atomic: true,
+      source: "user",
+    });
+    expect(sheet.getCell(0, 0)?.value).toBe("x");
+    expect(sheet.getCell(0, 0)?.styleId).toBe(styleId); // format preserved
+    expect(sheet.getCell(1, 1)?.styleId).toBe(styleId);
+
+    // One undo restores values AND the formatting is unchanged.
+    history.undo(bus);
+    expect(sheet.getCell(0, 0)?.value).toBe("a");
+    expect(sheet.getCell(0, 0)?.styleId).toBe(styleId);
+  });
+
+  it("null write deletes the sparse cell only when no style metadata exists", () => {
+    const { sheet, bus } = makeWorkbook();
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "cell.set", range: "A1", value: "temp" }],
+      atomic: true,
+      source: "user",
+    });
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "cell.set", range: "A1", value: null }],
+      atomic: true,
+      source: "user",
+    });
+    expect(sheet.getCell(0, 0)).toBeUndefined(); // no style → sparse slot freed
+
+    // Styled cell keeps a style-only entry on null write.
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [
+        { type: "range.style", range: "B1", style: { bold: true } },
+        { type: "cell.set", range: "B1", value: "temp" },
+      ],
+      atomic: true,
+      source: "user",
+    });
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "cell.set", range: "B1", value: null }],
+      atomic: true,
+      source: "user",
+    });
+    const styled = sheet.getCell(0, 1);
+    expect(styled).toBeDefined();
+    expect(styled?.value).toBeNull();
+    expect(styled?.styleId).toBeDefined();
+  });
+});
+
+describe("M2.8 structure boundaries", () => {
+  it("refuses to delete all rows or all columns (zero-event, zero-history)", () => {
+    const { workbook, sheet, bus, history } = makeWorkbook();
+    const events: string[] = [];
+    workbook.onChange((e) => events.push(e.sheetId));
+    bus.applyOperations({
+      sheetId: "s1",
+      operations: [{ type: "cell.set", range: "A1", value: "keep" }],
+      atomic: true,
+      source: "user",
+    });
+    events.length = 0;
+    const depth = history.undoDepth;
+
+    expect(() =>
+      bus.applyOperations({
+        sheetId: "s1",
+        operations: [{ type: "row.delete", at: 0, count: 100 }],
+        atomic: true,
+        source: "user",
+      }),
+    ).toThrow(/at least one row/);
+    expect(() =>
+      bus.applyOperations({
+        sheetId: "s1",
+        operations: [{ type: "column.delete", at: 0, count: 10 }],
+        atomic: true,
+        source: "user",
+      }),
+    ).toThrow(/at least one column/);
+
+    expect(sheet.rowCount).toBe(100);
+    expect(sheet.columnCount).toBe(10);
+    expect(sheet.getCell(0, 0)?.value).toBe("keep");
+    expect(events).toEqual([]);
+    expect(history.undoDepth).toBe(depth);
+  });
+
+  it("refuses inserts beyond MAX_ROWS / MAX_COLS", () => {
+    const { sheet, bus } = makeWorkbook();
+    expect(() =>
+      bus.applyOperations({
+        sheetId: "s1",
+        operations: [{ type: "row.insert", at: 0, count: 2_000_000 }],
+        atomic: true,
+        source: "user",
+      }),
+    ).toThrow(/MAX_ROWS/);
+    expect(() =>
+      bus.applyOperations({
+        sheetId: "s1",
+        operations: [{ type: "column.insert", at: 0, count: 20_000 }],
+        atomic: true,
+        source: "user",
+      }),
+    ).toThrow(/MAX_COLS/);
+    expect(sheet.rowCount).toBe(100);
+    expect(sheet.columnCount).toBe(10);
+  });
+});
+

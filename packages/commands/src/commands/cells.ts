@@ -1,4 +1,10 @@
 // Cell mutation commands: cell.set / cell.clear / range.write.
+//
+// WRITE SEMANTICS (M2.8): writing a value NEVER touches presentation
+// metadata. styleId / numberFormat are preserved; the old formula is
+// superseded by the new literal value. An empty write to a cell without any
+// style removes the sparse entry; a cell carrying ONLY style survives as
+// { value: null, styleId }.
 
 import type { CellData, CellPrimitive, Range } from "@opensheet/shared";
 import { parseRange, SheetError } from "@opensheet/shared";
@@ -6,6 +12,24 @@ import type { Worksheet } from "@opensheet/core";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 type CapturedCell = { row: number; col: number; previous: CellData | undefined };
+
+/** Merge a new literal value into the previous cell (metadata-preserving). */
+function writeValuePreservingStyle(sheet: Worksheet, row: number, col: number, value: CellPrimitive): void {
+  const previous = sheet.getCell(row, col);
+  if (previous === undefined) {
+    if (value === null) return; // nothing to store
+    sheet.setCell(row, col, { value });
+    return;
+  }
+  const next: CellData = { ...previous, value };
+  delete next.formula; // literal value supersedes any stored formula
+  const hasMetadata = next.styleId !== undefined || next.numberFormat !== undefined;
+  if (value === null && !hasMetadata) {
+    sheet.deleteCell(row, col); // truly empty: reclaim the sparse slot
+    return;
+  }
+  sheet.setCell(row, col, next);
+}
 
 function captureCells(sheet: Worksheet, range: Range): CapturedCell[] {
   const captured: CapturedCell[] = [];
@@ -87,7 +111,7 @@ export const cellSetCommand: SheetCommand<{ range: string; value: CellPrimitive 
     const apply = () => {
       for (let row = range.startRow; row <= range.endRow; row++) {
         for (let col = range.startCol; col <= range.endCol; col++) {
-          sheet.setCell(row, col, { value: payload.value });
+          writeValuePreservingStyle(sheet, row, col, payload.value);
         }
       }
     };
@@ -175,7 +199,7 @@ export const rangeWriteCommand: SheetCommand<{ range: string; values: CellPrimit
     const apply = () => {
       values.forEach((rowValues, r) => {
         rowValues.forEach((value, c) => {
-          sheet.setCell(range.startRow + r, range.startCol + c, { value });
+          writeValuePreservingStyle(sheet, range.startRow + r, range.startCol + c, value);
         });
       });
     };

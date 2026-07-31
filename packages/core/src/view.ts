@@ -1,7 +1,7 @@
 // Read-only view contracts. Renderers (M1) and external read paths depend on
 // these views only — mutation is possible exclusively through the Command Bus.
 
-import type { CellData, Range } from "@opensheet/shared";
+import type { CellData, CellStyle, Range } from "@opensheet/shared";
 
 /**
  * Read-only view of a worksheet. Implementations may return internal objects
@@ -29,4 +29,21 @@ export interface WorksheetView {
   getRowHeight(row: number): number | undefined;
 
   getColumnWidth(col: number): number | undefined;
+}
+
+/**
+ * Read-only view of a workbook (M3 guardrail). beforeCommit hooks receive
+ * THIS — the formula engine can only write via DerivedWriter, never by
+ * reaching a mutable Worksheet through the hook context.
+ */
+export interface WorkbookView {
+  readonly id: string;
+  readonly name: string;
+  readonly activeSheetId: string;
+
+  getSheetView(sheetId: string): WorksheetView;
+
+  listSheetViews(): readonly WorksheetView[];
+
+  resolveStyle(styleId: string): Readonly<CellStyle> | undefined;
 }

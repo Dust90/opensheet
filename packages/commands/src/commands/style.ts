@@ -1,8 +1,10 @@
 // range.style: apply presentation attributes to a range. Style objects are
 // deduplicated by the workbook StyleTable; cells reference them by id. The
-// journal captures each cell's PREVIOUS styleId so undo restores exactly.
+// journal captures each cell's PREVIOUS CellData so undo restores values,
+// formulas AND style references exactly (a styled-then-undone cell that had
+// a value but no style must keep its value).
 
-import type { CellStyle } from "@opensheet/shared";
+import type { CellData, CellStyle } from "@opensheet/shared";
 import { parseRange, SheetError } from "@opensheet/shared";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
@@ -42,7 +44,6 @@ export const rangeStyleCommand: SheetCommand<RangeStylePayload> = {
     // Merge semantics: keep existing attributes, override only the provided
     // ones. Empty diff (identical style) is a no-op but still journaled.
     const patch = { ...payload.style };
-    const previousIds = new Map<string, string | undefined>();
     const apply = () => {
       for (let row = range.startRow; row <= range.endRow; row++) {
         for (let col = range.startCol; col <= range.endCol; col++) {
@@ -58,10 +59,14 @@ export const rangeStyleCommand: SheetCommand<RangeStylePayload> = {
         }
       }
     };
-    // Capture previous ids BEFORE applying (inverse patch).
+    // Capture previous cells BEFORE applying (inverse patch). Recording only
+    // the styleId is NOT enough: a cell that had a value but no style must
+    // survive an undo, while a cell that did not exist must be removed.
+    const previous = new Map<string, CellData | undefined>();
     for (let row = range.startRow; row <= range.endRow; row++) {
       for (let col = range.startCol; col <= range.endCol; col++) {
-        previousIds.set(`${row}:${col}`, sheet.getCell(row, col)?.styleId);
+        const cell = sheet.getCell(row, col);
+        previous.set(`${row}:${col}`, cell === undefined ? undefined : { ...cell });
       }
     }
     apply();
@@ -75,18 +80,15 @@ export const rangeStyleCommand: SheetCommand<RangeStylePayload> = {
     const journal: JournalEntry = {
       label: "range.style",
       affected: [{ sheetId: sheet.id, range, kind: "style" }],
-      approxBytes: 512 + previousIds.size * 96,
+      approxBytes: 512 + previous.size * 160,
       undo: (rctx) => {
         for (let row = range.startRow; row <= range.endRow; row++) {
           for (let col = range.startCol; col <= range.endCol; col++) {
-            const previous = previousIds.get(`${row}:${col}`);
-            const cell = sheet.getCell(row, col);
-            if (cell === undefined) continue;
-            if (previous === undefined) {
-              // Cell did not exist before: remove the style-only cell.
+            const data = previous.get(`${row}:${col}`);
+            if (data === undefined) {
               sheet.deleteCell(row, col);
             } else {
-              sheet.setCell(row, col, { ...cell, styleId: previous });
+              sheet.setCell(row, col, { ...data });
             }
           }
         }

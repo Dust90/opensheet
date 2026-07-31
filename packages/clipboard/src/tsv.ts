@@ -10,7 +10,8 @@ import { inferPrimitive } from "@opensheet/shared";
  *
  * Field escaping (RFC 4180-style): a field containing tab, CR, LF or a
  * double quote is wrapped in double quotes; inner quotes are doubled. This
- * makes round-trips lossless for arbitrary strings.
+ * makes round-trips lossless for arbitrary strings. Note: parseTSV infers
+ * types, so a WRITE→PARSE cycle may change values (e.g. "007"→7).
  */
 export function cellsToTSV(cells: readonly CellPrimitive[][]): string {
   return cells.map((row) => row.map(encodeField).join("\t")).join("\r\n");
@@ -25,16 +26,31 @@ function encodeField(value: CellPrimitive): string {
 }
 
 /**
- * Parse TSV text into a rectangular primitive matrix. Empty trailing rows
- * are dropped; a lone empty line yields an empty matrix. Values are type
- * inferred (numbers/booleans) via shared.inferPrimitive.
+ * Parse TSV text into a rectangular primitive matrix.
+ *
+ * - Blank lines INSIDE the text are kept as [null] rows (positions must not
+ *   shift when pasting back); only the trailing line break's empty tail is
+ *   dropped.
+ * - The result is padded with null to a rectangle, so callers can build a
+ *   single range.write without dimension mismatches.
+ * - Values are type inferred via shared.inferPrimitive ("42"→42 etc.), so
+ *   numeric-looking strings are NOT preserved as strings.
  */
 export function parseTSV(text: string): CellPrimitive[][] {
   const rows: CellPrimitive[][] = [];
-  // Split on \r\n or \n; keep embedded \n inside quoted fields intact.
-  for (const line of splitLines(text)) {
-    if (line.length === 0) continue; // trailing blank line
+  const lines = splitLines(text);
+  // Drop only the final empty tail produced by a trailing line break.
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  for (const line of lines) {
+    if (line.length === 0) {
+      rows.push([null]); // interior blank line: keep the row position
+      continue;
+    }
     rows.push(parseLine(line));
+  }
+  const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 0);
+  for (const row of rows) {
+    while (row.length < maxCols) row.push(null);
   }
   return rows;
 }

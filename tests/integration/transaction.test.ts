@@ -94,8 +94,10 @@ describe("derived (beforeCommit) channel", () => {
   it("hook output merges into the same commit and never enters history", () => {
     const { workbook, history, bus, events } = setup();
     // Simulates the M3 formula engine: recompute B1 = A1*2 before commit.
+    // The hook receives a READ-ONLY WorkbookView (guardrail 3): reads via
+    // getSheetView, writes ONLY via derived.
     bus.addBeforeCommitHook(({ workbook: wb, derived }) => {
-      const source = wb.getSheet("s1").getCell(0, 0)?.value;
+      const source = wb.getSheetView("s1").getCell(0, 0)?.value;
       if (typeof source === "number") {
         derived.setCell("s1", 0, 1, { value: source * 2, formula: "=A1*2" });
       }

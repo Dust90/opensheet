@@ -39,7 +39,16 @@ function App() {
       setBootStatus("New workbook");
     }
     const stop = persistence.autoSave();
+    // Flush the pending debounced save before the page is torn down.
+    const flush = () => persistence.flush();
+    window.addEventListener("pagehide", flush);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
       stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

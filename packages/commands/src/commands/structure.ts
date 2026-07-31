@@ -11,7 +11,7 @@
 // Insert journals are trivial inverses: inserting empty rows/cols is undone
 // by deleting exactly those rows/cols (cells were shifted, not copied).
 
-import { SheetError, type CellData } from "@opensheet/shared";
+import { MAX_COLS, MAX_ROWS, SheetError, type CellData } from "@opensheet/shared";
 import type { Worksheet } from "@opensheet/core";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
@@ -44,6 +44,14 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
         throw new SheetError(
           "E_VALIDATION",
           `${this.id} position ${payload.at} exceeds sheet ${axis} (${axis === "rows" ? sheet.rowCount : sheet.columnCount})`,
+        );
+      }
+      const total = axis === "rows" ? sheet.rowCount : sheet.columnCount;
+      const max = axis === "rows" ? MAX_ROWS : MAX_COLS;
+      if (total + count > max) {
+        throw new SheetError(
+          "E_VALIDATION",
+          `${this.id} would grow the sheet past ${axis === "rows" ? "MAX_ROWS" : "MAX_COLS"} (${max})`,
         );
       }
       const apply = () => {
@@ -122,6 +130,12 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
         throw new SheetError(
           "E_VALIDATION",
           `${this.id} range [${payload.at}, ${payload.at + count}) exceeds sheet ${axis} (${total})`,
+        );
+      }
+      if (total - count < 1) {
+        throw new SheetError(
+          "E_VALIDATION",
+          `A worksheet must retain at least one ${axis === "rows" ? "row" : "column"}`,
         );
       }
       const prevFreeze = axis === "rows" ? sheet.frozenRows : sheet.frozenColumns;

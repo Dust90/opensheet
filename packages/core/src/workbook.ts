@@ -3,7 +3,7 @@
 import type { ChangeEvent, ChangeListener, Unsubscribe } from "@opensheet/shared";
 import { SheetError } from "@opensheet/shared";
 import { StyleTable } from "./styles.js";
-import type { WorksheetView } from "./view.js";
+import type { WorkbookView, WorksheetView } from "./view.js";
 import { Worksheet } from "./worksheet.js";
 
 export interface WorkbookInit {
@@ -66,6 +66,19 @@ export class Workbook {
   /** Read-only sheet access for consumers outside the command path. */
   getSheetView(sheetId: string): WorksheetView {
     return this.getSheet(sheetId).asView();
+  }
+
+  /** Read-only view for beforeCommit hooks (M3 guardrail: hooks get no
+   *  writable surface; they write only through DerivedWriter). */
+  asView(): WorkbookView {
+    return {
+      id: this.id,
+      name: this.name,
+      activeSheetId: this.activeSheetId,
+      getSheetView: (sheetId: string) => this.getSheetView(sheetId),
+      listSheetViews: () => this.sheets.map((s) => s.asView()),
+      resolveStyle: (styleId: string) => this.styles.get(styleId),
+    };
   }
 
   addSheet(sheet: Worksheet): void {

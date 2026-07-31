@@ -1,6 +1,6 @@
 // Command + journal contracts (inverse patch journal, ADR-0003).
 
-import type { Workbook } from "@opensheet/core";
+import type { Workbook, WorkbookView } from "@opensheet/core";
 import type { CellData, ChangeKind, ChangeSource, Range } from "@opensheet/shared";
 
 /** Minimal context available while undoing/redoing journal entries. */
@@ -71,9 +71,11 @@ export interface DerivedWriter {
 /** Runs inside the open transaction, right before commit (ADR-0003).
  *  The formula engine (M3) hooks here to fold derived recalculation results
  *  into the same merged change event. Hooks MUST write through `derived` —
- *  direct workbook writes are untracked and will not roll back on failure. */
+ *  the `workbook` here is a READ-ONLY WorkbookView (M3 guardrail), so direct
+ *  mutation is impossible at the type level; only DerivedWriter writes, and
+ *  those are journaled for rollback. */
 export type BeforeCommitHook = (ctx: {
-  workbook: Workbook;
+  workbook: WorkbookView;
   source: ChangeSource;
   derived: DerivedWriter;
 }) => void;

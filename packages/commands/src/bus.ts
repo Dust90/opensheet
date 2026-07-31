@@ -202,8 +202,12 @@ export class CommandBus {
   private runBeforeCommitHooks(source: ChangeSource, derivedJournal: JournalEntry[]): void {
     if (this.beforeCommitHooks.length === 0) return;
     const derived = this.makeDerivedWriter(derivedJournal);
+    // Guardrail 3 (M2.8): hooks receive a read-only WorkbookView — they can
+    // read cells/styles freely but can only WRITE through DerivedWriter,
+    // which journals every mutation for rollback.
+    const view = this.workbook.asView();
     for (const hook of this.beforeCommitHooks) {
-      hook({ workbook: this.workbook, source, derived });
+      hook({ workbook: view, source, derived });
     }
   }
 
