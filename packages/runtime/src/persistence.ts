@@ -166,10 +166,12 @@ export function createPersistence(
   }
 
   function flush(): void {
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      timer = undefined;
-    }
+    // Only a PENDING (debounced) save is flushed. With nothing scheduled this
+    // is a no-op — callers (pagehide, teardown, React StrictMode remount)
+    // must never persist an untouched workbook over an existing snapshot.
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timer = undefined;
     saveNow();
   }
 

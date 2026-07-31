@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createOpenSheet, createPersistence, validateSnapshot, type StorageLike } from "../index.js";
-import { WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
 
 function memoryStorage(seed: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...seed };
@@ -67,6 +67,45 @@ describe("createPersistence", () => {
     vi.useRealTimers();
   });
 
+  it("autoSave stop flushes the pending save (no lost edit on teardown)", () => {
+    vi.useFakeTimers();
+    const api = createOpenSheet();
+    const wb = api.createWorkbook({ name: "Flush" });
+    const storage = memoryStorage();
+    const persistence = createPersistence(api, { storage, debounceMs: 1000 });
+    const stop = persistence.autoSave();
+
+    api.applyOperations({
+      workbookId: wb.id,
+      sheetId: wb.activeSheetId,
+      atomic: true,
+      operations: [{ type: "range.write", range: "D4", values: [["last-edit"]] }],
+    });
+    expect(storage.data["opensheet:workbook"]).toBeUndefined(); // still pending
+    stop(); // teardown BEFORE the debounce fires
+    expect(storage.data["opensheet:workbook"]).toBeDefined();
+    expect(JSON.parse(storage.data["opensheet:workbook"]!).sheets[0].cells["3:3"].value).toBe("last-edit");
+    vi.useRealTimers();
+  });
+
+  it("flush() persists a pending save immediately", () => {
+    vi.useFakeTimers();
+    const api = createOpenSheet();
+    const wb = api.createWorkbook({ name: "F" });
+    const storage = memoryStorage();
+    const persistence = createPersistence(api, { storage, debounceMs: 1000 });
+    persistence.autoSave();
+    api.applyOperations({
+      workbookId: wb.id,
+      sheetId: wb.activeSheetId,
+      atomic: true,
+      operations: [{ type: "range.write", range: "A1", values: [["x"]] }],
+    });
+    persistence.flush();
+    expect(storage.data["opensheet:workbook"]).toBeDefined();
+    vi.useRealTimers();
+  });
+
   it("rejects corrupt JSON, wrong version and malformed shapes without touching storage", () => {
     const api = createOpenSheet();
     api.createWorkbook({ name: "X" });
@@ -105,5 +144,41 @@ describe("createPersistence", () => {
     expect(validateSnapshot(null)).toBe(false);
     expect(validateSnapshot("nope")).toBe(false);
     expect(validateSnapshot({ version: 0, id: "x", name: "y", activeSheetId: "s", sheets: [], styles: {} })).toBe(false);
+  });
+
+  it("M2.8: rejects out-of-range sizes, freeze, ids, cell keys and size maps", () => {
+    const base = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "n",
+      activeSheetId: "s",
+      styles: {},
+    };
+    const sheet = (over: Record<string, unknown>) => ({ id: "s", name: "S", rowCount: 10, columnCount: 5, cells: {}, ...over });
+    const make = (s: Record<string, unknown>) => ({ ...base, sheets: [sheet(s)] });
+
+    expect(validateSnapshot(make({ rowCount: 0 }))).toBe(false); // zero rows
+    expect(validateSnapshot(make({ rowCount: -3 }))).toBe(false); // negative
+    expect(validateSnapshot(make({ rowCount: 2.5 }))).toBe(false); // non-integer
+    expect(validateSnapshot(make({ rowCount: MAX_ROWS + 1 }))).toBe(false); // over max
+    expect(validateSnapshot(make({ columnCount: MAX_COLS + 1 }))).toBe(false);
+
+    expect(validateSnapshot(make({ frozenRows: 11 }))).toBe(false); // freeze > rows
+    expect(validateSnapshot(make({ frozenColumns: -1 }))).toBe(false);
+
+    expect(validateSnapshot({ ...base, activeSheetId: "missing", sheets: [sheet({})] })).toBe(false);
+
+    expect(validateSnapshot(make({ cells: { "9:4": { value: 1 } } }))).toBe(true); // boundary ok
+    expect(validateSnapshot(make({ cells: { "10:0": { value: 1 } } }))).toBe(false); // row out of bounds
+    expect(validateSnapshot(make({ cells: { "0:5": { value: 1 } } }))).toBe(false); // col out of bounds
+    expect(validateSnapshot(make({ cells: { "abc": { value: 1 } } }))).toBe(false); // malformed key
+    expect(validateSnapshot(make({ cells: { "-1:0": { value: 1 } } }))).toBe(false);
+
+    expect(validateSnapshot(make({ rowHeights: { 3: 24 } }))).toBe(true);
+    expect(validateSnapshot(make({ rowHeights: { 10: 24 } }))).toBe(false); // index out of bounds
+    expect(validateSnapshot(make({ rowHeights: { 3: 0 } }))).toBe(false); // non-positive size
+    expect(validateSnapshot(make({ rowHeights: { 3: NaN } }))).toBe(false);
+    expect(validateSnapshot(make({ columnWidths: { 4: 80 } }))).toBe(true);
+    expect(validateSnapshot(make({ columnWidths: { 5: 80 } }))).toBe(false);
   });
 });
