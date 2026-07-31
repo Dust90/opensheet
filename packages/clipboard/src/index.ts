@@ -1,2 +1,2 @@
 // @opensheet/clipboard
-export {};
+export { cellsToTSV, parseTSV } from "./tsv.js";

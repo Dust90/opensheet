@@ -6,6 +6,7 @@
 
 import type { WorksheetView } from "@opensheet/core";
 import type {
+  CellPrimitive,
   CellStyle,
   ChangeEvent,
   ChangeListener,
@@ -14,11 +15,18 @@ import type {
 import { isCellError } from "@opensheet/shared";
 import { AxisMetrics } from "./axis-metrics.js";
 import {
+  cellRectInCanvas,
   computeScrollbarGeometry,
   hitTestCell,
   type ScrollbarGeometry,
 } from "./coordinate-mapper.js";
 import { DirtyRegionTracker, rangeToCanvasRects, type PixelRect } from "./dirty-region.js";
+import { CellEditor } from "./editor/cell-editor.js";
+import {
+  cellDisplayText,
+  decideKeyInPhase,
+  isPrintableKey,
+} from "./editor/editor-state.js";
 import { SelectionModel } from "./selection.js";
 import { lightTheme, type GridTheme } from "./theme.js";
 import {
@@ -45,6 +53,12 @@ export interface SheetGridOptions {
   onSelectionChange?: (state: { activeRow: number; activeCol: number }) => void;
   /** Perf probe: called after each rendered frame with paint timings. */
   onFrame?: (stats: { paintMs: number; full: boolean; paintedCells: number }) => void;
+  /** Inline editor committed text for `cell`. Host routes it to the Command Bus. */
+  onCommitCell?: (init: { row: number; col: number; text: string }) => void;
+  /** Selection copied (Cmd/Ctrl+C): host serializes to TSV and writes the clipboard. */
+  onCopyCells?: (cells: CellPrimitive[][]) => void;
+  /** Paste requested (Cmd/Ctrl+V): host reads the clipboard, parses TSV, writes ONE transaction anchored at `active`. */
+  onPasteRequest?: (active: { row: number; col: number }) => void;
 }
 
 const DEFAULT_ROW_HEIGHT = 26;
@@ -70,6 +84,9 @@ export class SheetGrid {
   private readonly headerHeight: number;
   private readonly onSelectionChange: ((state: { activeRow: number; activeCol: number }) => void) | undefined;
   private readonly onFrame: ((stats: { paintMs: number; full: boolean; paintedCells: number }) => void) | undefined;
+  private readonly onCommitCell: ((init: { row: number; col: number; text: string }) => void) | undefined;
+  private readonly onCopyCells: ((cells: CellPrimitive[][]) => void) | undefined;
+  private readonly onPasteRequest: ((active: { row: number; col: number }) => void) | undefined;
   private paintedCells = 0;
   private readonly defaultRowHeight: number;
   private readonly defaultColWidth: number;
@@ -80,6 +97,7 @@ export class SheetGrid {
   private readonly containerOutline: string;
   private readonly handleWheelBound: (e: WheelEvent) => void;
   private readonly handleMouseDownBound: (e: MouseEvent) => void;
+  private readonly handleDblClickBound: (e: MouseEvent) => void;
   private readonly handleMouseMoveBound: (e: MouseEvent) => void;
   private readonly handleMouseUpBound: () => void;
   private readonly handleKeyDownBound: (e: KeyboardEvent) => void;
@@ -97,6 +115,8 @@ export class SheetGrid {
 
   private readonly selection: SelectionModel;
   private readonly dirty = new DirtyRegionTracker();
+  private readonly editor: CellEditor;
+  private editingCell: { row: number; col: number } | null = null;
   private rafId = 0;
   private destroyed = false;
   private drag: DragMode = null;
@@ -112,6 +132,9 @@ export class SheetGrid {
     this.headerHeight = options.headerHeight ?? DEFAULT_HEADER_H;
     this.onSelectionChange = options.onSelectionChange;
     this.onFrame = options.onFrame;
+    this.onCommitCell = options.onCommitCell;
+    this.onCopyCells = options.onCopyCells;
+    this.onPasteRequest = options.onPasteRequest;
 
     const initialPosition = getComputedStyle(this.container).position;
     this.containerPosition = initialPosition;
@@ -149,8 +172,16 @@ export class SheetGrid {
     this.unsubscribe = options.onChange((event) => this.handleChangeEvent(event));
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
+    this.editor = new CellEditor(this.container, {
+      onCommit: (text, move) => this.commitEditor(text, move),
+      onCancel: () => {
+        this.editingCell = null;
+        this.container.focus();
+      },
+    });
     this.handleWheelBound = (e) => this.onWheel(e);
     this.handleMouseDownBound = (e) => this.onMouseDown(e);
+    this.handleDblClickBound = (e) => this.onDblClick(e);
     this.handleMouseMoveBound = (e) => this.onMouseMove(e);
     this.handleMouseUpBound = () => {
       this.drag = null;
@@ -158,6 +189,11 @@ export class SheetGrid {
     this.handleKeyDownBound = (e) => this.onKeyDown(e);
     this.attachInputHandlers();
     this.resize();
+  }
+
+  /** Current selection state (host toolbar / copy reads this). */
+  getSelectionState(): import("./selection.js").SelectionState {
+    return this.selection.state;
   }
 
   destroy(): void {
@@ -168,8 +204,10 @@ export class SheetGrid {
     this.container.removeEventListener("wheel", this.handleWheelBound);
     this.container.removeEventListener("keydown", this.handleKeyDownBound);
     this.overlayCanvas.removeEventListener("mousedown", this.handleMouseDownBound);
+    this.overlayCanvas.removeEventListener("dblclick", this.handleDblClickBound);
     globalThis.removeEventListener("mousemove", this.handleMouseMoveBound);
     globalThis.removeEventListener("mouseup", this.handleMouseUpBound);
+    this.editor.destroy();
     this.contentCanvas.remove();
     this.overlayCanvas.remove();
     // Restore container attributes the renderer modified.
@@ -186,6 +224,14 @@ export class SheetGrid {
     this.dirty.pushEvent(event);
     if (this.dirty.needsStructureRebuild) {
       this.rebuildMetrics();
+      // Row/col/sheet structure changed: the active cell may now be out of
+      // bounds. SelectionModel re-clamps on next set; force it now so the
+      // overlay does not paint a stale out-of-range selection.
+      this.selection.clampSelection();
+      this.notifySelection();
+      // Refresh the cached layout IMMEDIATELY — hit-testing (e.g. a click
+      // arriving before the next rAF) must never use stale frozen geometry.
+      this.layout = this.computeLayout();
     }
     this.scheduleFrame();
   }
@@ -682,6 +728,7 @@ export class SheetGrid {
   private attachInputHandlers(): void {
     this.container.addEventListener("wheel", this.handleWheelBound, { passive: false });
     this.overlayCanvas.addEventListener("mousedown", this.handleMouseDownBound);
+    this.overlayCanvas.addEventListener("dblclick", this.handleDblClickBound);
     globalThis.addEventListener("mousemove", this.handleMouseMoveBound);
     globalThis.addEventListener("mouseup", this.handleMouseUpBound);
     this.container.addEventListener("keydown", this.handleKeyDownBound);
@@ -765,8 +812,48 @@ export class SheetGrid {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
+    // While the inline editor is open it owns ALL keys (Enter/Tab/Escape/IME
+    // live in the textarea; composition keydowns bubble here and must not
+    // trigger grid navigation). Blur-commit happens before this returns.
+    if (this.editor.isActive) return;
+
     const shift = e.shiftKey;
     const meta = e.metaKey || e.ctrlKey;
+
+    // Clipboard: Cmd/Ctrl+C and Cmd/Ctrl+V (also works mid-edit? No — the
+    // textarea handles its own copy/paste; grid handles selection copy/paste).
+    if (meta && !shift && !e.altKey) {
+      if (e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        this.copySelection();
+        return;
+      }
+      if (e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        this.pasteIntoSelection();
+        return;
+      }
+    }
+
+    // Inline editing start: F2 (edit current value) or a printable char
+    // (replace cell content, Excel-style). Keep grid navigation keys out.
+    const action = decideKeyInPhase("idle", {
+      key: e.key,
+      shift,
+      ctrl: meta,
+      meta,
+      alt: e.altKey,
+    });
+    if (action.kind === "start-editing") {
+      e.preventDefault();
+      const active = this.selection.state.active;
+      const initial = isPrintableKey(e.key, { ctrl: meta, meta, alt: e.altKey })
+        ? e.key
+        : cellDisplayText(this.worksheet.getCell(active.row, active.col)?.formula, this.worksheet.getCell(active.row, active.col)?.value);
+      this.startEditing(active, initial);
+      return;
+    }
+
     const pageRows = Math.max(
       1,
       this.rows.indexAt(this.scrollY + (this.layout?.mainHeight ?? 400)) - this.rows.indexAt(this.scrollY) - 1,
@@ -819,6 +906,62 @@ export class SheetGrid {
     this.scheduleOverlay();
   }
 
+  // --- inline editing --------------------------------------------------------
+
+  private onDblClick(e: MouseEvent): void {
+    if (e.button !== 0) return;
+    const { x, y } = this.canvasPoint(e);
+    const hit = this.hitTest(x, y);
+    if (hit.zone !== "cell") return;
+    const cell = this.worksheet.getCell(hit.row, hit.col);
+    this.startEditing(hit, cellDisplayText(cell?.formula, cell?.value));
+  }
+
+  private startEditing(cell: { row: number; col: number }, initialText: string): void {
+    const layout = this.layout ?? this.computeLayout();
+    const rect = cellRectInCanvas(cell, layout, this.rows, this.cols);
+    this.editingCell = { row: cell.row, col: cell.col };
+    this.editor.open(rect, initialText);
+  }
+
+  private commitEditor(text: string, move: { row: number; col: number } | null): void {
+    const cell = this.editingCell;
+    this.editingCell = null;
+    if (cell === null) return;
+    // Editor only READS; the host performs the write through applyOperations.
+    this.onCommitCell?.({ row: cell.row, col: cell.col, text });
+    if (move !== null) {
+      this.selection.moveBy(move.row, move.col, false);
+      this.scrollActiveIntoView();
+      this.notifySelection();
+      this.scheduleOverlay();
+    }
+    this.container.focus();
+  }
+
+  // --- clipboard (selection copy / TSV paste) --------------------------------
+  // The grid only READS the selection and hands raw cells to the host; the
+  // host owns clipboard I/O and the atomic write (M2 semantic: one paste =
+  // one history entry).
+
+  private copySelection(): void {
+    const range = this.selection.state.range;
+    const rows: CellPrimitive[][] = [];
+    for (let row = range.startRow; row <= range.endRow; row++) {
+      const line: CellPrimitive[] = [];
+      for (let col = range.startCol; col <= range.endCol; col++) {
+        line.push(cellPrimitiveOf(this.worksheet.getCell(row, col)?.value));
+      }
+      rows.push(line);
+    }
+    this.onCopyCells?.(rows);
+  }
+
+  private pasteIntoSelection(): void {
+    const active = this.selection.state.active;
+    this.onPasteRequest?.({ row: active.row, col: active.col });
+  }
+
   private scrollActiveIntoView(): void {
     const active = this.selection.state.active;
     const next = computeScrollToCell(active, { scrollX: this.scrollX, scrollY: this.scrollY }, {
@@ -864,10 +1007,16 @@ export class SheetGrid {
   // --- scrollbar geometry ---------------------------------------------------
 
 
+}
 
-
-
-
+/** Cell value → clipboard primitive (errors copy as their display text). */
+function cellPrimitiveOf(value: import("@opensheet/shared").CellValue | undefined): CellPrimitive {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "object") {
+    // CellError
+    return value.message !== undefined ? `${value.type}: ${value.message}` : value.type;
+  }
+  return value;
 }
 
 function colName(col: number): string {

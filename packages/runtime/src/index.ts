@@ -2,6 +2,8 @@
 
 export { createOpenSheet } from "./create-opensheet.js";
 export type { OpenSheetOptions } from "./create-opensheet.js";
+export { createPersistence, validateSnapshot } from "./persistence.js";
+export type { Persistence, PersistenceOptions, StorageLike } from "./persistence.js";
 export type {
   ImportCSVResult,
   OpenSheetAPI,

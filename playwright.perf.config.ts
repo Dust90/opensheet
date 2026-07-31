@@ -10,6 +10,9 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: "http://127.0.0.1:5173",
+    // Full chromium binary (new headless) — the headless shell build is not
+    // installed on macOS 13; keeps perf numbers comparable across runners.
+    channel: "chromium",
   },
   webServer: {
     command: "pnpm --filter @opensheet/demo dev --host 127.0.0.1",

@@ -7,3 +7,4 @@ export * from "./cell.js";
 export * from "./events.js";
 export * from "./cell-store.js";
 export * from "./snapshot.js";
+export * from "./infer.js";

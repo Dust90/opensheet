@@ -85,4 +85,16 @@ export class SelectionModel {
   lastCell(): CellAddress {
     return { row: this.rowCount() - 1, col: this.colCount() - 1 };
   }
+
+  /**
+   * Force both anchor and focus back into bounds. Called by the renderer
+   * after row/col structure changes so a stale out-of-range selection is
+   * never painted.
+   */
+  clampSelection(): void {
+    const anchor = this.clamp(this.anchor);
+    const focus = this.clamp(this.focus);
+    this.anchor = anchor;
+    this.focus = focus;
+  }
 }

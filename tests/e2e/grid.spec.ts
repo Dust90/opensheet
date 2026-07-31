@@ -45,11 +45,15 @@ test.describe("M1 grid", () => {
     await page.goto("/");
     const grid = page.locator("[data-testid=sheet-grid]");
     await expect(grid).toBeVisible();
-    const box = (await grid.boundingBox())!;
+    // The M2 toolbar wraps to two lines while the "Freeze row 1 + col A"
+    // button is long; clicking it shortens the header ("Unfreeze"), so the
+    // grid container MOVES. Always re-read the box right before clicking.
+    const freshBox = async () => (await grid.boundingBox())!;
 
     // Freeze row 1 + column A.
     await page.getByRole("button", { name: "Freeze row 1 + col A" }).click();
     await expect(page.getByRole("button", { name: "Unfreeze" })).toBeVisible();
+    let box = await freshBox();
 
     // Click the first MAIN cell (right below the frozen row, right of the
     // frozen col) → must be B2, not a duplicated A1.
@@ -69,6 +73,7 @@ test.describe("M1 grid", () => {
     // The frozen corner still yields A1 after scrolling (A1 is frozen and
     // remains clickable; note the view intentionally stays scrolled since A1
     // is always visible — Excel-like semantics for frozen panes).
+    box = await freshBox();
     await page.mouse.click(box.x + 48 + 10, box.y + 26 + 10);
     await expect(page.getByText(/Active: A1/)).toBeVisible();
 
@@ -81,12 +86,14 @@ test.describe("M1 grid", () => {
 
     // Unfrozen, the point that was the first main cell (B2) is now the main
     // area's B2 still — structure change picked up by the renderer.
+    box = await freshBox();
     await page.mouse.click(box.x + 48 + 100 + 10, box.y + 26 + 26 + 10);
     await expect(page.getByText(/Active: B2/)).toBeVisible();
 
     // Undo the unfreeze → frozen geometry is restored. Scroll is already at
     // 0 (set by Ctrl+Home while unfrozen), so the same point is B2 again.
     await page.getByRole("button", { name: "Undo" }).click();
+    box = await freshBox();
     await page.mouse.click(box.x + 48 + 100 + 10, box.y + 26 + 26 + 10);
     await expect(page.getByText(/Active: B2/)).toBeVisible();
 

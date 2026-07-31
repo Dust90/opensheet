@@ -208,7 +208,7 @@ importers:
   .:
     devDependencies:
       '@playwright/test':
-        specifier: ^1.55.0
+        specifier: 1.55.0
         version: 1.55.0
       '@types/node':
         specifier: ^24.13.3
@@ -237,6 +237,9 @@ importers:
 
   apps/demo:
     dependencies:
+      '@opensheet/clipboard':
+        specifier: workspace:*
+        version: link:../../packages/clipboard
       '@opensheet/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -301,9 +304,6 @@ importers:
 
   packages/clipboard:
     dependencies:
-      '@opensheet/core':
-        specifier: workspace:*
-        version: link:../core
       '@opensheet/shared':
         specifier: workspace:*
         version: link:../shared

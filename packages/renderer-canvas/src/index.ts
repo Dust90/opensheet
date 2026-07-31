@@ -20,3 +20,14 @@ export {
 export type { PixelRect } from "./dirty-region.js";
 export { darkTheme, lightTheme } from "./theme.js";
 export type { GridTheme } from "./theme.js";
+export { CellEditor } from "./editor/cell-editor.js";
+export type { CellEditorCallbacks, CellEditorRect } from "./editor/cell-editor.js";
+export {
+  cellDisplayText,
+  decideKeyInPhase,
+  inferPrimitive,
+  isPrintableKey,
+} from "./editor/editor-state.js";
+export type { EditorAction, EditorKeyInfo, EditorPhase } from "./editor/editor-state.js";
+export { cellRectInCanvas, hitTestCell } from "./coordinate-mapper.js";
+export type { CellHit, HitZone } from "./coordinate-mapper.js";

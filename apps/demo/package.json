@@ -12,6 +12,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@opensheet/clipboard": "workspace:*",
     "@opensheet/core": "workspace:*",
     "@opensheet/react": "workspace:*",
     "@opensheet/renderer-canvas": "workspace:*",

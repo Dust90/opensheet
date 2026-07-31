@@ -2,7 +2,7 @@
 // grid input layer and (M2) the DOM editor positioning.
 
 import type { AxisMetrics } from "./axis-metrics.js";
-import type { ViewportLayout } from "./viewport.js";
+import type { Quadrant, ViewportLayout } from "./viewport.js";
 
 export type HitZone =
   | "cell"
@@ -113,8 +113,7 @@ export interface ScrollbarInput {
 }
 
 /** Scrollbar track/thumb geometry. Scroll extents exclude the frozen zone. */
-export function computeScrollbarGeometry(input: ScrollbarInput): ScrollbarGeometry {
-  const { layout } = input;
+export function computeScrollbarGeometry(input: ScrollbarInput): ScrollbarGeometry {  const { layout } = input;
   const minThumb = 24;
   const scrollableH = Math.max(0, input.rows.totalSize - layout.frozenHeight);
   const scrollableW = Math.max(0, input.cols.totalSize - layout.frozenWidth);
@@ -142,4 +141,30 @@ export function computeScrollbarGeometry(input: ScrollbarInput): ScrollbarGeomet
   }
 
   return { vertical, horizontal };
+}
+
+/**
+ * Canvas rect (CSS px, header-exclusive origin at canvas 0,0) of a cell,
+ * resolving which frozen quadrant it lives in. Used by the DOM editor (M2)
+ * to position the textarea over the cell — same coordinate math as painting.
+ */
+export function cellRectInCanvas(
+  cell: { row: number; col: number },
+  layout: ViewportLayout,
+  rows: AxisMetrics,
+  cols: AxisMetrics,
+): { x: number; y: number; width: number; height: number } {
+  const frozenRow = cell.row < layout.main.rowStart;
+  const frozenCol = cell.col < layout.main.colStart;
+  let q: Quadrant;
+  if (frozenRow && frozenCol) q = layout.corner!;
+  else if (frozenRow) q = layout.top!;
+  else if (frozenCol) q = layout.left!;
+  else q = layout.main;
+  return {
+    x: q.originX + (cols.positionOf(cell.col) - cols.positionOf(q.colStart)),
+    y: q.originY + (rows.positionOf(cell.row) - rows.positionOf(q.rowStart)),
+    width: cols.sizeOf(cell.col),
+    height: rows.sizeOf(cell.row),
+  };
 }

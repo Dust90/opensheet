@@ -19,7 +19,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*",
-    "@opensheet/core": "workspace:*"
+    "@opensheet/shared": "workspace:*"
   }
 }
