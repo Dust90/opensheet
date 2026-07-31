@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { AxisMetrics } from "../axis-metrics.js";
 import { computeScrollbarGeometry, hitTestCell } from "../coordinate-mapper.js";
 import { DirtyRegionTracker, rangeToCanvasRects } from "../dirty-region.js";
+import { IdentityRowProjection } from "../row-projection.js";
 import { SelectionModel } from "../selection.js";
 import { clampScroll, computeScrollToCell, computeViewport, type ViewportInput } from "../viewport.js";
 
 const ROWS = 1000;
 const COLS = 26;
+const IDENTITY = new IdentityRowProjection(ROWS);
 
 function makeAxes(rowOverrides = new Map<number, number>(), colOverrides = new Map<number, number>()) {
   const rows = new AxisMetrics(ROWS, 24, (i) => rowOverrides.get(i));
@@ -307,7 +309,7 @@ describe("DirtyRegionTracker", () => {
     const { rows, cols } = makeAxes();
     const layout = computeViewport(viewportInput(rows, cols));
     const tracker = new DirtyRegionTracker();
-    tracker.consume(layout, rows, cols); // clear initial full flag
+    tracker.consume(layout, rows, cols, IDENTITY); // clear initial full flag
 
     tracker.pushEvent({
       workbookId: "wb",
@@ -316,7 +318,7 @@ describe("DirtyRegionTracker", () => {
       source: "user",
       batch: true,
     });
-    const result = tracker.consume(layout, rows, cols);
+    const result = tracker.consume(layout, rows, cols, IDENTITY);
     expect(result.full).toBe(false);
     expect(result.rects).toHaveLength(1);
     expect(result.rects[0]).toEqual({ x: 48, y: 26, width: 100, height: 24 });
@@ -329,7 +331,7 @@ describe("DirtyRegionTracker", () => {
       batch: true,
     });
     expect(tracker.needsStructureRebuild).toBe(true);
-    expect(tracker.consume(layout, rows, cols).full).toBe(true);
+    expect(tracker.consume(layout, rows, cols, IDENTITY).full).toBe(true);
   });
 
   it("rangeToCanvasRects splits ranges across frozen quadrants", () => {

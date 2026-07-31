@@ -27,6 +27,13 @@ import {
   decideKeyInPhase,
   isPrintableKey,
 } from "./editor/editor-state.js";
+import {
+  IdentityRowProjection,
+  lastVisiblePhysicalRow,
+  physicalRangeToVisualRange,
+  relocateToVisibleRow,
+  type RowProjection,
+} from "./row-projection.js";
 import { SelectionModel } from "./selection.js";
 import { lightTheme, type GridTheme } from "./theme.js";
 import {
@@ -109,6 +116,13 @@ export class SheetGrid {
 
   private rows: AxisMetrics;
   private cols: AxisMetrics;
+  /**
+   * Visual ↔ physical row mapping (M4.1). The row AxisMetrics, viewport
+   * quadrants and canvas Y are ALWAYS visual; SelectionModel, Worksheet data
+   * and ChangeEvent ranges are ALWAYS physical. Identity when no filter is
+   * active.
+   */
+  private projection: RowProjection;
   private scrollX = 0;
   private scrollY = 0;
   private layout: ViewportLayout | null = null;
@@ -158,8 +172,11 @@ export class SheetGrid {
 
     this.defaultRowHeight = options.defaultRowHeight ?? DEFAULT_ROW_HEIGHT;
     this.defaultColWidth = options.defaultColumnWidth ?? DEFAULT_COL_WIDTH;
-    this.rows = new AxisMetrics(this.worksheet.rowCount, this.defaultRowHeight, (i) =>
-      this.worksheet.getRowHeight(i),
+    this.projection = new IdentityRowProjection(this.worksheet.rowCount);
+    // Row axis spans VISUAL rows; heights resolve through the projection so
+    // hidden rows occupy no pixels and custom physical heights still apply.
+    this.rows = new AxisMetrics(this.projection.visualRowCount, this.defaultRowHeight, (visualRow) =>
+      this.worksheet.getRowHeight(this.projection.visualToPhysical(visualRow)),
     );
     this.cols = new AxisMetrics(this.worksheet.columnCount, this.defaultColWidth, (i) =>
       this.worksheet.getColumnWidth(i),
@@ -196,6 +213,37 @@ export class SheetGrid {
     return this.selection.state;
   }
 
+  /** Current projection (identity unless the host installed a filtered one). */
+  getRowProjection(): RowProjection {
+    return this.projection;
+  }
+
+  /**
+   * Install a new row projection (M4.1; `null` restores identity, e.g. when a
+   * filter is cleared). Rebuilds the visual row axis and applies the
+   * hidden-active-cell policy: an active cell that became hidden moves to the
+   * next visible physical row so the overlay, F2 and keyboard navigation
+   * always have a visible anchor.
+   */
+  setRowProjection(projection: RowProjection | null): void {
+    this.projection = projection ?? new IdentityRowProjection(this.worksheet.rowCount);
+    const active = this.selection.state.active;
+    if (!this.projection.isVisible(active.row)) {
+      const relocated = relocateToVisibleRow(this.projection, active.row);
+      if (relocated !== undefined) {
+        this.selection.setActive({ row: relocated, col: active.col });
+      }
+    }
+    this.rebuildMetrics();
+    this.selection.clampSelection();
+    // Refresh layout synchronously: a click before the next rAF must never
+    // hit-test against stale frozen geometry (same rule as structure events).
+    this.layout = this.computeLayout();
+    this.dirty.markFullRedraw();
+    this.notifySelection();
+    this.scheduleFrame();
+  }
+
   destroy(): void {
     this.destroyed = true;
     if (this.rafId !== 0) cancelAnimationFrame(this.rafId);
@@ -222,6 +270,15 @@ export class SheetGrid {
   private handleChangeEvent(event: ChangeEvent): void {
     if (event.sheetId !== this.worksheet.id) return;
     this.dirty.pushEvent(event);
+    // MVP rule (docs/m4-data-operations.md): row/column insert/delete clears
+    // an active filter — the projection resets to identity rather than
+    // rewriting filter-range coordinates. The host re-applies if needed.
+    for (const change of event.changes) {
+      if (change.kind === "rows" || change.kind === "columns") {
+        this.projection = new IdentityRowProjection(this.worksheet.rowCount);
+        break;
+      }
+    }
     if (this.dirty.needsStructureRebuild) {
       this.rebuildMetrics();
       // Row/col/sheet structure changed: the active cell may now be out of
@@ -237,8 +294,9 @@ export class SheetGrid {
   }
 
   private rebuildMetrics(): void {
-    this.rows.rebuild(this.worksheet.rowCount, this.defaultRowHeight, (i) =>
-      this.worksheet.getRowHeight(i),
+    const projection = this.projection;
+    this.rows.rebuild(projection.visualRowCount, this.defaultRowHeight, (visualRow) =>
+      this.worksheet.getRowHeight(projection.visualToPhysical(visualRow)),
     );
     this.cols.rebuild(this.worksheet.columnCount, this.defaultColWidth, (i) =>
       this.worksheet.getColumnWidth(i),
@@ -310,7 +368,9 @@ export class SheetGrid {
       height: this.contentHeight(),
       rows: this.rows,
       cols: this.cols,
-      frozenRowCount: this.worksheet.frozenRows,
+      // Viewport frozen counts are VISUAL: hidden rows inside the physical
+      // frozen zone occupy no height, visible frozen rows stay pinned.
+      frozenRowCount: this.projection.visibleCountBefore(this.worksheet.frozenRows),
       frozenColCount: this.worksheet.frozenColumns,
       bufferPx: BUFFER_PX,
       headerWidth: this.headerWidth,
@@ -323,7 +383,7 @@ export class SheetGrid {
     const t0 = performance.now();
     this.paintedCells = 0;
     this.layout = this.computeLayout();
-    const { full, rects } = this.dirty.consume(this.layout, this.rows, this.cols);
+    const { full, rects } = this.dirty.consume(this.layout, this.rows, this.cols, this.projection);
     if (full) {
       this.paintAll(this.layout);
     } else {
@@ -425,13 +485,16 @@ export class SheetGrid {
 
     const theme = this.theme;
     const sheet = this.worksheet;
+    const projection = this.projection;
 
-    // 1. backgrounds
-    for (let row = rowStart; row <= rowEnd; row++) {
-      const y = q.originY + (this.rows.positionOf(row) - this.rows.positionOf(q.rowStart));
-      const h = this.rows.sizeOf(row);
+    // 1. backgrounds — quadrant indices are VISUAL rows; data access maps
+    // each visual row back to its physical row exactly once.
+    for (let visualRow = rowStart; visualRow <= rowEnd; visualRow++) {
+      const physicalRow = projection.visualToPhysical(visualRow);
+      const y = q.originY + (this.rows.positionOf(visualRow) - this.rows.positionOf(q.rowStart));
+      const h = this.rows.sizeOf(visualRow);
       for (let col = colStart; col <= colEnd; col++) {
-        const cell = sheet.getCell(row, col);
+        const cell = sheet.getCell(physicalRow, col);
         const style = cell?.styleId !== undefined ? this.resolveStyleFn?.(cell.styleId) : undefined;
         if (style?.backgroundColor === undefined) continue;
         const x = q.originX + (this.cols.positionOf(col) - this.cols.positionOf(q.colStart));
@@ -444,8 +507,8 @@ export class SheetGrid {
     ctx.strokeStyle = theme.gridLine;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let row = rowStart; row <= rowEnd + 1; row++) {
-      const y = Math.round(q.originY + (this.rows.positionOf(row) - this.rows.positionOf(q.rowStart))) + 0.5;
+    for (let visualRow = rowStart; visualRow <= rowEnd + 1; visualRow++) {
+      const y = Math.round(q.originY + (this.rows.positionOf(visualRow) - this.rows.positionOf(q.rowStart))) + 0.5;
       ctx.moveTo(q.clipX, y);
       ctx.lineTo(q.clipX + q.clipWidth, y);
     }
@@ -458,11 +521,12 @@ export class SheetGrid {
 
     // 3. cell text
     ctx.textBaseline = "middle";
-    for (let row = rowStart; row <= rowEnd; row++) {
-      const y = q.originY + (this.rows.positionOf(row) - this.rows.positionOf(q.rowStart));
-      const h = this.rows.sizeOf(row);
+    for (let visualRow = rowStart; visualRow <= rowEnd; visualRow++) {
+      const physicalRow = projection.visualToPhysical(visualRow);
+      const y = q.originY + (this.rows.positionOf(visualRow) - this.rows.positionOf(q.rowStart));
+      const h = this.rows.sizeOf(visualRow);
       for (let col = colStart; col <= colEnd; col++) {
-        const cell = sheet.getCell(row, col);
+        const cell = sheet.getCell(physicalRow, col);
         this.paintedCells++;
         if (cell === undefined || cell.value === null) continue;
         const style = cell.styleId !== undefined ? this.resolveStyleFn?.(cell.styleId) : undefined;
@@ -562,17 +626,22 @@ export class SheetGrid {
       ctx.clip();
       ctx.fillStyle = theme.headerBackground;
       ctx.fillRect(0, clipY, this.headerWidth, clipH);
-      for (let row = rowStart; row <= rowEnd; row++) {
-        const y = originY + (this.rows.positionOf(row) - this.rows.positionOf(baseRow));
-        const h = this.rows.sizeOf(row);
-        const highlighted = row >= selection.startRow && row <= selection.endRow;
+      // rowStart..rowEnd are VISUAL rows. Headers display the PHYSICAL row
+      // number (filtered sheets keep their original numbering), and the
+      // selection highlight compares physical rows (SelectionModel is
+      // physical) — never the compacted visual index.
+      for (let visualRow = rowStart; visualRow <= rowEnd; visualRow++) {
+        const physicalRow = this.projection.visualToPhysical(visualRow);
+        const y = originY + (this.rows.positionOf(visualRow) - this.rows.positionOf(baseRow));
+        const h = this.rows.sizeOf(visualRow);
+        const highlighted = physicalRow >= selection.startRow && physicalRow <= selection.endRow;
         if (highlighted) {
           ctx.fillStyle = theme.headerHighlight;
           ctx.fillRect(0, y, this.headerWidth, h);
         }
         ctx.fillStyle = highlighted ? theme.headerHighlightText : theme.headerText;
         ctx.textAlign = "center";
-        ctx.fillText(String(row + 1), this.headerWidth / 2, y + h / 2);
+        ctx.fillText(String(physicalRow + 1), this.headerWidth / 2, y + h / 2);
         ctx.strokeStyle = theme.gridLine;
         ctx.beginPath();
         ctx.moveTo(0, Math.round(y) + 0.5);
@@ -598,10 +667,12 @@ export class SheetGrid {
       layout.mainWidth,
     );
 
-    // Row headers: frozen strip + main strip.
-    const frozenRows = this.worksheet.frozenRows;
-    if (frozenRows > 0) {
-      paintRowHeaders(0, frozenRows - 1, this.headerHeight, 0, this.headerHeight, layout.frozenHeight);
+    // Row headers: frozen strip + main strip. The frozen strip spans the
+    // VISIBLE frozen rows (hidden rows inside the physical frozen zone
+    // occupy no header pixels either).
+    const visibleFrozenRows = this.projection.visibleCountBefore(this.worksheet.frozenRows);
+    if (visibleFrozenRows > 0) {
+      paintRowHeaders(0, visibleFrozenRows - 1, this.headerHeight, 0, this.headerHeight, layout.frozenHeight);
     }
     paintRowHeaders(
       layout.main.rowStart,
@@ -636,9 +707,14 @@ export class SheetGrid {
     ctx.save();
     ctx.clearRect(0, 0, this.contentWidth(), this.contentHeight());
 
-    // Selection fill + border.
+    // Selection fill + border. SelectionModel is PHYSICAL; the overlay maps
+    // the range onto the visual axis (hidden rows inside occupy no pixels,
+    // so the fill stays continuous — standard spreadsheet behavior).
     const selection = this.selection.state;
-    const rects = rangeToCanvasRects(selection.range, layout, this.rows, this.cols);
+    const visualSelection = physicalRangeToVisualRange(selection.range, this.projection);
+    const rects = visualSelection === null
+      ? []
+      : rangeToCanvasRects(visualSelection, layout, this.rows, this.cols);
     for (const rect of rects) {
       ctx.fillStyle = theme.selectionFill;
       ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
@@ -646,28 +722,33 @@ export class SheetGrid {
       ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1);
     }
 
-    // Active cell border + fill handle.
-    const activeRects = rangeToCanvasRects(
-      {
-        startRow: selection.active.row,
-        startCol: selection.active.col,
-        endRow: selection.active.row,
-        endCol: selection.active.col,
-      },
-      layout,
-      this.rows,
-      this.cols,
-    );
-    for (const rect of activeRects) {
-      ctx.strokeStyle = theme.activeCellBorder;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2);
-      ctx.lineWidth = 1;
-      ctx.fillStyle = theme.activeCellBorder;
-      ctx.fillRect(rect.x + rect.width - 4, rect.y + rect.height - 4, 5, 5);
+    // Active cell border + fill handle (visible by policy; if it ever ends
+    // up hidden — e.g. projection swapped under a stale selection — skip
+    // rather than paint at a wrong visual slot).
+    const activeVisualRow = this.projection.physicalToVisual(selection.active.row);
+    if (activeVisualRow !== undefined) {
+      const activeRects = rangeToCanvasRects(
+        {
+          startRow: activeVisualRow,
+          startCol: selection.active.col,
+          endRow: activeVisualRow,
+          endCol: selection.active.col,
+        },
+        layout,
+        this.rows,
+        this.cols,
+      );
+      for (const rect of activeRects) {
+        ctx.strokeStyle = theme.activeCellBorder;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2);
+        ctx.lineWidth = 1;
+        ctx.fillStyle = theme.activeCellBorder;
+        ctx.fillRect(rect.x + rect.width - 4, rect.y + rect.height - 4, 5, 5);
+      }
     }
 
-    // Frozen dividers.
+    // Frozen dividers (drawn when any VISIBLE frozen strip exists).
     ctx.strokeStyle = theme.frozenDivider;
     ctx.beginPath();
     if (this.worksheet.frozenColumns > 0) {
@@ -675,7 +756,7 @@ export class SheetGrid {
       ctx.moveTo(x, this.headerHeight);
       ctx.lineTo(x, this.contentHeight());
     }
-    if (this.worksheet.frozenRows > 0) {
+    if (this.projection.visibleCountBefore(this.worksheet.frozenRows) > 0) {
       const y = layout.mainY + 0.5;
       ctx.moveTo(this.headerWidth, y);
       ctx.lineTo(this.contentWidth(), y);
@@ -861,10 +942,10 @@ export class SheetGrid {
     let handled = true;
     switch (e.key) {
       case "ArrowUp":
-        this.selection.moveBy(-1, 0, shift);
+        this.moveActiveRow(-1, shift);
         break;
       case "ArrowDown":
-        this.selection.moveBy(1, 0, shift);
+        this.moveActiveRow(1, shift);
         break;
       case "ArrowLeft":
         this.selection.moveBy(0, -1, shift);
@@ -876,21 +957,27 @@ export class SheetGrid {
         this.selection.moveBy(0, shift ? -1 : 1, false);
         break;
       case "Enter":
-        this.selection.moveBy(shift ? -1 : 1, 0, false);
+        this.moveActiveRow(shift ? -1 : 1, false);
         break;
       case "PageUp":
-        this.selection.moveBy(-pageRows, 0, shift);
+        this.pageActiveRow(-1, shift, pageRows);
         break;
       case "PageDown":
-        this.selection.moveBy(pageRows, 0, shift);
+        this.pageActiveRow(1, shift, pageRows);
         break;
       case "Home":
-        if (meta) this.selection.jumpTo({ row: 0, col: 0 }, shift);
-        else this.selection.jumpTo({ row: this.selection.state.active.row, col: 0 }, shift);
+        if (meta) {
+          // Ctrl+Home: first VISIBLE physical row (identity → row 0).
+          const firstVisible = this.projection.visualRowCount > 0 ? this.projection.visualToPhysical(0) : 0;
+          this.selection.jumpTo({ row: firstVisible, col: 0 }, shift);
+        } else this.selection.jumpTo({ row: this.selection.state.active.row, col: 0 }, shift);
         break;
       case "End":
-        if (meta) this.selection.jumpTo(this.selection.lastCell(), shift);
-        else
+        if (meta) {
+          // Ctrl+End: last VISIBLE physical row, not the sheet's last row.
+          const lastRow = lastVisiblePhysicalRow(this.projection);
+          this.selection.jumpTo({ row: Math.max(0, lastRow), col: this.worksheet.columnCount - 1 }, shift);
+        } else
           this.selection.jumpTo(
             { row: this.selection.state.active.row, col: this.worksheet.columnCount - 1 },
             shift,
@@ -906,6 +993,54 @@ export class SheetGrid {
     this.scheduleOverlay();
   }
 
+  /**
+   * Vertical keyboard move over VISIBLE rows (M4.1): hidden rows are skipped
+   * via the projection. Without shift the move starts from the range edge in
+   * the direction of travel and collapses the selection (desktop behavior);
+   * with shift it extends from the focus cell. SelectionModel stays physical.
+   */
+  private moveActiveRow(direction: 1 | -1, extend: boolean): void {
+    const state = this.selection.state;
+    const baseRow = extend
+      ? state.active.row
+      : direction > 0
+        ? state.range.endRow
+        : state.range.startRow;
+    const nextRow = this.projection.nextVisible(baseRow, direction) ?? baseRow;
+    if (extend) {
+      this.selection.extendTo({ row: nextRow, col: state.active.col });
+    } else {
+      this.selection.setActive({ row: nextRow, col: state.active.col });
+    }
+  }
+
+  /** Page moves use visual arithmetic: ±pageRows on the visual axis. */
+  private pageActiveRow(direction: 1 | -1, extend: boolean, pageRows: number): void {
+    const state = this.selection.state;
+    const baseRow = extend
+      ? state.active.row
+      : direction > 0
+        ? state.range.endRow
+        : state.range.startRow;
+    const baseVisual =
+      this.projection.physicalToVisual(baseRow) ??
+      (() => {
+        const relocated = relocateToVisibleRow(this.projection, baseRow);
+        return relocated === undefined ? undefined : this.projection.physicalToVisual(relocated);
+      })();
+    if (baseVisual === undefined) return; // nothing visible — degenerate
+    const targetVisual = Math.min(
+      Math.max(0, baseVisual + direction * pageRows),
+      this.projection.visualRowCount - 1,
+    );
+    const targetRow = this.projection.visualToPhysical(targetVisual);
+    if (extend) {
+      this.selection.extendTo({ row: targetRow, col: state.active.col });
+    } else {
+      this.selection.setActive({ row: targetRow, col: state.active.col });
+    }
+  }
+
   // --- inline editing --------------------------------------------------------
 
   private onDblClick(e: MouseEvent): void {
@@ -919,7 +1054,12 @@ export class SheetGrid {
 
   private startEditing(cell: { row: number; col: number }, initialText: string): void {
     const layout = this.layout ?? this.computeLayout();
-    const rect = cellRectInCanvas(cell, layout, this.rows, this.cols);
+    // cellRectInCanvas positions over the VISUAL axis; a hidden cell has no
+    // visual slot, so it cannot be edited (kept unreachable by the
+    // hidden-active-cell policy — this is the defensive guard).
+    const visualRow = this.projection.physicalToVisual(cell.row);
+    if (visualRow === undefined) return;
+    const rect = cellRectInCanvas({ row: visualRow, col: cell.col }, layout, this.rows, this.cols);
     this.editingCell = { row: cell.row, col: cell.col };
     this.editor.open(rect, initialText);
   }
@@ -931,7 +1071,11 @@ export class SheetGrid {
     // Editor only READS; the host performs the write through applyOperations.
     this.onCommitCell?.({ row: cell.row, col: cell.col, text });
     if (move !== null) {
-      this.selection.moveBy(move.row, move.col, false);
+      if (move.row !== 0) {
+        this.moveActiveRow(move.row > 0 ? 1 : -1, false);
+      } else if (move.col !== 0) {
+        this.selection.moveBy(0, move.col, false);
+      }
       this.scrollActiveIntoView();
       this.notifySelection();
       this.scheduleOverlay();
@@ -964,12 +1108,16 @@ export class SheetGrid {
 
   private scrollActiveIntoView(): void {
     const active = this.selection.state.active;
-    const next = computeScrollToCell(active, { scrollX: this.scrollX, scrollY: this.scrollY }, {
+    // computeScrollToCell works on the VISUAL axis (positions come from the
+    // row AxisMetrics); a hidden active cell has no visual slot to reveal.
+    const activeVisualRow = this.projection.physicalToVisual(active.row);
+    if (activeVisualRow === undefined) return;
+    const next = computeScrollToCell({ row: activeVisualRow, col: active.col }, { scrollX: this.scrollX, scrollY: this.scrollY }, {
       viewportWidth: this.contentWidth() - this.headerWidth,
       viewportHeight: this.contentHeight() - this.headerHeight,
       rows: this.rows,
       cols: this.cols,
-      frozenRowCount: this.worksheet.frozenRows,
+      frozenRowCount: this.projection.visibleCountBefore(this.worksheet.frozenRows),
       frozenColCount: this.worksheet.frozenColumns,
     });
     this.setScroll(next.scrollX, next.scrollY);
@@ -977,7 +1125,7 @@ export class SheetGrid {
 
   private hitTest(x: number, y: number): import("./coordinate-mapper.js").CellHit {
     const layout = this.layout ?? this.computeLayout();
-    return hitTestCell({
+    const hit = hitTestCell({
       x,
       y,
       layout,
@@ -988,9 +1136,15 @@ export class SheetGrid {
       headerWidth: this.headerWidth,
       headerHeight: this.headerHeight,
       scrollbarSize: SCROLLBAR,
-      rowCount: this.worksheet.rowCount,
+      // Bounds and returned rows are VISUAL (they index the row axis)…
+      rowCount: this.rows.length,
       colCount: this.worksheet.columnCount,
     });
+    // …but SelectionModel and the host are PHYSICAL — convert exactly once.
+    if (hit.zone === "cell" || hit.zone === "rowHeader") {
+      return { ...hit, row: this.projection.visualToPhysical(hit.row) };
+    }
+    return hit;
   }
 
   private scheduleOverlay(): void {

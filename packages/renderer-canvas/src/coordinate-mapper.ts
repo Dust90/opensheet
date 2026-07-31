@@ -30,6 +30,8 @@ export interface HitTestInput {
   headerWidth: number;
   headerHeight: number;
   scrollbarSize: number;
+  /** VISUAL row count (row-axis length); the returned row is visual too —
+   *  the caller maps it to a physical row via the RowProjection (M4.1). */
   rowCount: number;
   colCount: number;
 }
@@ -147,6 +149,9 @@ export function computeScrollbarGeometry(input: ScrollbarInput): ScrollbarGeomet
  * Canvas rect (CSS px, header-exclusive origin at canvas 0,0) of a cell,
  * resolving which frozen quadrant it lives in. Used by the DOM editor (M2)
  * to position the textarea over the cell — same coordinate math as painting.
+ *
+ * `cell.row` / `cell.col` are AXIS indices: VISUAL for rows (map the physical
+ * row through the RowProjection first), physical for columns.
  */
 export function cellRectInCanvas(
   cell: { row: number; col: number },

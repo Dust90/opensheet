@@ -13,6 +13,14 @@ export type { Quadrant, ScrollPosition, ViewportInput, ViewportLayout } from "./
 export { SelectionModel } from "./selection.js";
 export type { SelectionState } from "./selection.js";
 export {
+  FilteredRowProjection,
+  IdentityRowProjection,
+  lastVisiblePhysicalRow,
+  physicalRangeToVisualRange,
+  relocateToVisibleRow,
+} from "./row-projection.js";
+export type { RowProjection } from "./row-projection.js";
+export {
   DirtyRegionTracker,
   mergeRects,
   rangeToCanvasRects,

@@ -2,6 +2,7 @@
 
 import type { ChangeEvent, Range } from "@opensheet/shared";
 import type { AxisMetrics } from "./axis-metrics.js";
+import { physicalRangeToVisualRange, type RowProjection } from "./row-projection.js";
 import type { ViewportLayout } from "./viewport.js";
 
 export interface PixelRect {
@@ -28,7 +29,16 @@ export class DirtyRegionTracker {
 
   pushEvent(event: ChangeEvent): void {
     for (const change of event.changes) {
-      if (change.kind === "rows" || change.kind === "columns" || change.kind === "structure" || change.kind === "metadata") {
+      if (
+        change.kind === "rows" ||
+        change.kind === "columns" ||
+        change.kind === "structure" ||
+        change.kind === "metadata" ||
+        // M4: a filter re-projects the whole visual axis; a reorder moved
+        // every value in the range — both need metrics + full repaint.
+        change.kind === "filter" ||
+        change.kind === "reorder"
+      ) {
         this.structureChanged = true;
       } else {
         this.ranges.push(change.range);
@@ -43,9 +53,11 @@ export class DirtyRegionTracker {
 
   /**
    * Consume the accumulated state. Caller re-runs viewport computation first
-   * when `needsStructureRebuild` was true.
+   * when `needsStructureRebuild` was true. ChangeEvent ranges are PHYSICAL;
+   * they are mapped onto the visual axis through `projection` before being
+   * converted to pixel rects (fully-hidden ranges produce no rect).
    */
-  consume(layout: ViewportLayout, rows: AxisMetrics, cols: AxisMetrics): {
+  consume(layout: ViewportLayout, rows: AxisMetrics, cols: AxisMetrics, projection: RowProjection): {
     full: boolean;
     rects: PixelRect[];
   } {
@@ -58,14 +70,16 @@ export class DirtyRegionTracker {
     }
     const rects: PixelRect[] = [];
     for (const range of this.ranges) {
-      rects.push(...rangeToCanvasRects(range, layout, rows, cols));
+      const visualRange = physicalRangeToVisualRange(range, projection);
+      if (visualRange === null) continue;
+      rects.push(...rangeToCanvasRects(visualRange, layout, rows, cols));
     }
     this.ranges = [];
     return { full: false, rects: mergeRects(rects) };
   }
 }
 
-/** Map a cell range to canvas rects (one per intersected quadrant). */
+/** Map a VISUAL-axis range to canvas rects (one per intersected quadrant). */
 export function rangeToCanvasRects(
   range: Range,
   layout: ViewportLayout,
