@@ -10,3 +10,4 @@ test-results/
 .env.local
 
 .workbuddy/
+_tmp_*

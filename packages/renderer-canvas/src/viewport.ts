@@ -1,5 +1,10 @@
 // Viewport: visible range computation + frozen-pane quadrant geometry.
 // Pure functions — no DOM, unit-testable in node.
+//
+// SCROLL SEMANTICS (ADR: M1.9): scrollX/scrollY are RELATIVE TO THE
+// NON-FROZEN AREA. At scroll=0 the main quadrant starts at the first
+// non-frozen row/col (frozenRowCount/frozenColCount), so frozen content is
+// never duplicated.
 
 import type { CellAddress } from "@opensheet/shared";
 import type { AxisMetrics } from "./axis-metrics.js";
@@ -67,16 +72,23 @@ export function computeViewport(input: ViewportInput): ViewportLayout {
   const mainWidth = Math.max(0, input.width - mainX);
   const mainHeight = Math.max(0, input.height - mainY);
 
-  // Main quadrant: buffered visible window in the scrollable space.
-  const mainRowStart = rows.indexAt(Math.max(0, input.scrollY - bufferPx));
+  // scroll is relative to the non-frozen area: absolute content position of
+  // the main window start = frozenHeight + scrollY (rows) / frozenWidth + scrollX.
+  const mainRowStart = Math.max(
+    frozenRowCount,
+    rows.indexAt(frozenHeight + Math.max(0, input.scrollY) - bufferPx),
+  );
   const mainRowEnd = Math.min(
     rows.length - 1,
-    rows.indexAt(input.scrollY + mainHeight + bufferPx),
+    rows.indexAt(frozenHeight + input.scrollY + mainHeight + bufferPx),
   );
-  const mainColStart = cols.indexAt(Math.max(0, input.scrollX - bufferPx));
+  const mainColStart = Math.max(
+    frozenColCount,
+    cols.indexAt(frozenWidth + Math.max(0, input.scrollX) - bufferPx),
+  );
   const mainColEnd = Math.min(
     cols.length - 1,
-    cols.indexAt(input.scrollX + mainWidth + bufferPx),
+    cols.indexAt(frozenWidth + input.scrollX + mainWidth + bufferPx),
   );
 
   const main: Quadrant = {
@@ -84,8 +96,8 @@ export function computeViewport(input: ViewportInput): ViewportLayout {
     rowEnd: mainRowEnd,
     colStart: mainColStart,
     colEnd: mainColEnd,
-    originX: mainX + (cols.positionOf(mainColStart) - input.scrollX),
-    originY: mainY + (rows.positionOf(mainRowStart) - input.scrollY),
+    originX: mainX + cols.positionOf(mainColStart) - frozenWidth - input.scrollX,
+    originY: mainY + rows.positionOf(mainRowStart) - frozenHeight - input.scrollY,
     clipX: mainX,
     clipY: mainY,
     clipWidth: mainWidth,
@@ -149,7 +161,8 @@ export interface ScrollPosition {
 
 /**
  * Minimal scroll adjustment so `cell` becomes fully visible. Cells inside
- * frozen zones are always visible. Accounts for frozen sizes and headers.
+ * frozen zones are always visible. scroll is relative to the non-frozen
+ * area, so cell positions are shifted by the frozen sizes.
  */
 export function computeScrollToCell(
   cell: CellAddress,
@@ -172,27 +185,27 @@ export function computeScrollToCell(
   let { scrollX, scrollY } = scroll;
 
   if (cell.col >= input.frozenColCount) {
-    const cellStart = cols.positionOf(cell.col);
+    const cellStart = cols.positionOf(cell.col) - frozenWidth;
     const cellEnd = cellStart + cols.sizeOf(cell.col);
     if (cellStart < scrollX) scrollX = cellStart;
     else if (cellEnd > scrollX + viewWidth) scrollX = cellEnd - viewWidth;
   }
   if (cell.row >= input.frozenRowCount) {
-    const cellStart = rows.positionOf(cell.row);
+    const cellStart = rows.positionOf(cell.row) - frozenHeight;
     const cellEnd = cellStart + rows.sizeOf(cell.row);
     if (cellStart < scrollY) scrollY = cellStart;
     else if (cellEnd > scrollY + viewHeight) scrollY = cellEnd - viewHeight;
   }
 
-  const maxScrollX = Math.max(0, cols.totalSize - viewWidth);
-  const maxScrollY = Math.max(0, rows.totalSize - viewHeight);
+  const maxScrollX = Math.max(0, cols.totalSize - frozenWidth - viewWidth);
+  const maxScrollY = Math.max(0, rows.totalSize - frozenHeight - viewHeight);
   return {
     scrollX: Math.min(Math.max(0, scrollX), maxScrollX),
     scrollY: Math.min(Math.max(0, scrollY), maxScrollY),
   };
 }
 
-/** Clamp scroll into valid range given content and viewport size. */
+/** Clamp scroll into valid range. viewportWidth/Height exclude headers. */
 export function clampScroll(
   scroll: ScrollPosition,
   rows: AxisMetrics,
@@ -202,8 +215,8 @@ export function clampScroll(
   frozenWidth: number,
   frozenHeight: number,
 ): ScrollPosition {
-  const maxScrollX = Math.max(0, cols.totalSize - (viewportWidth - frozenWidth));
-  const maxScrollY = Math.max(0, rows.totalSize - (viewportHeight - frozenHeight));
+  const maxScrollX = Math.max(0, cols.totalSize - frozenWidth - viewportWidth);
+  const maxScrollY = Math.max(0, rows.totalSize - frozenHeight - viewportHeight);
   return {
     scrollX: Math.min(Math.max(0, scroll.scrollX), maxScrollX),
     scrollY: Math.min(Math.max(0, scroll.scrollY), maxScrollY),

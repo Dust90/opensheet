@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "bench:cell-store": "node scripts/bench-cell-store.mjs",
+    "bench:grid": "node scripts/bench-grid.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",

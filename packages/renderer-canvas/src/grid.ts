@@ -13,6 +13,11 @@ import type {
 } from "@opensheet/shared";
 import { isCellError } from "@opensheet/shared";
 import { AxisMetrics } from "./axis-metrics.js";
+import {
+  computeScrollbarGeometry,
+  hitTestCell,
+  type ScrollbarGeometry,
+} from "./coordinate-mapper.js";
 import { DirtyRegionTracker, rangeToCanvasRects, type PixelRect } from "./dirty-region.js";
 import { SelectionModel } from "./selection.js";
 import { lightTheme, type GridTheme } from "./theme.js";
@@ -66,6 +71,17 @@ export class SheetGrid {
   private readonly onSelectionChange: ((state: { activeRow: number; activeCol: number }) => void) | undefined;
   private readonly onFrame: ((stats: { paintMs: number; full: boolean; paintedCells: number }) => void) | undefined;
   private paintedCells = 0;
+  private readonly defaultRowHeight: number;
+  private readonly defaultColWidth: number;
+  private headerDirty = true;
+  private readonly containerPosition: string;
+  private readonly containerOverflow: string;
+  private readonly containerTabIndex: number;
+  private readonly containerOutline: string;
+  private readonly handleWheelBound: (e: WheelEvent) => void;
+  private readonly handleMouseMoveBound: (e: MouseEvent) => void;
+  private readonly handleMouseUpBound: () => void;
+  private readonly handleKeyDownBound: (e: KeyboardEvent) => void;
 
   private readonly contentCanvas: HTMLCanvasElement;
   private readonly overlayCanvas: HTMLCanvasElement;
@@ -96,8 +112,12 @@ export class SheetGrid {
     this.onSelectionChange = options.onSelectionChange;
     this.onFrame = options.onFrame;
 
-    const position = getComputedStyle(this.container).position;
-    if (position === "static") this.container.style.position = "relative";
+    const initialPosition = getComputedStyle(this.container).position;
+    this.containerPosition = initialPosition;
+    this.containerOverflow = this.container.style.overflow;
+    this.containerTabIndex = this.container.tabIndex;
+    this.containerOutline = this.container.style.outline;
+    if (initialPosition === "static") this.container.style.position = "relative";
     this.container.style.overflow = "hidden";
     this.container.tabIndex = 0;
     this.container.style.outline = "none";
@@ -112,12 +132,12 @@ export class SheetGrid {
     this.contentCtx = this.contentCanvas.getContext("2d")!;
     this.overlayCtx = this.overlayCanvas.getContext("2d")!;
 
-    const defaultRowHeight = options.defaultRowHeight ?? DEFAULT_ROW_HEIGHT;
-    const defaultColWidth = options.defaultColumnWidth ?? DEFAULT_COL_WIDTH;
-    this.rows = new AxisMetrics(this.worksheet.rowCount, defaultRowHeight, (i) =>
+    this.defaultRowHeight = options.defaultRowHeight ?? DEFAULT_ROW_HEIGHT;
+    this.defaultColWidth = options.defaultColumnWidth ?? DEFAULT_COL_WIDTH;
+    this.rows = new AxisMetrics(this.worksheet.rowCount, this.defaultRowHeight, (i) =>
       this.worksheet.getRowHeight(i),
     );
-    this.cols = new AxisMetrics(this.worksheet.columnCount, defaultColWidth, (i) =>
+    this.cols = new AxisMetrics(this.worksheet.columnCount, this.defaultColWidth, (i) =>
       this.worksheet.getColumnWidth(i),
     );
     this.selection = new SelectionModel(
@@ -128,6 +148,12 @@ export class SheetGrid {
     this.unsubscribe = options.onChange((event) => this.handleChangeEvent(event));
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
+    this.handleWheelBound = (e) => this.onWheel(e);
+    this.handleMouseMoveBound = (e) => this.onMouseMove(e);
+    this.handleMouseUpBound = () => {
+      this.drag = null;
+    };
+    this.handleKeyDownBound = (e) => this.onKeyDown(e);
     this.attachInputHandlers();
     this.resize();
   }
@@ -137,8 +163,17 @@ export class SheetGrid {
     if (this.rafId !== 0) cancelAnimationFrame(this.rafId);
     this.unsubscribe();
     this.resizeObserver.disconnect();
+    this.container.removeEventListener("wheel", this.handleWheelBound);
+    this.container.removeEventListener("keydown", this.handleKeyDownBound);
+    globalThis.removeEventListener("mousemove", this.handleMouseMoveBound);
+    globalThis.removeEventListener("mouseup", this.handleMouseUpBound);
     this.contentCanvas.remove();
     this.overlayCanvas.remove();
+    // Restore container attributes the renderer modified.
+    this.container.style.position = this.containerPosition;
+    this.container.style.overflow = this.containerOverflow;
+    this.container.style.outline = this.containerOutline;
+    this.container.tabIndex = this.containerTabIndex;
   }
 
   // --- change events --------------------------------------------------------
@@ -153,22 +188,12 @@ export class SheetGrid {
   }
 
   private rebuildMetrics(): void {
-    const defaultRowHeight = this.rowsSizeDefault(26);
-    const defaultColWidth = this.colsSizeDefault(100);
-    this.rows.rebuild(this.worksheet.rowCount, defaultRowHeight, (i) =>
+    this.rows.rebuild(this.worksheet.rowCount, this.defaultRowHeight, (i) =>
       this.worksheet.getRowHeight(i),
     );
-    this.cols.rebuild(this.worksheet.columnCount, defaultColWidth, (i) =>
+    this.cols.rebuild(this.worksheet.columnCount, this.defaultColWidth, (i) =>
       this.worksheet.getColumnWidth(i),
     );
-  }
-
-  private rowsSizeDefault(fallback: number): number {
-    return fallback; // default row height is renderer config; overrides come from the view
-  }
-
-  private colsSizeDefault(fallback: number): number {
-    return fallback;
   }
 
   // --- sizing ---------------------------------------------------------------
@@ -255,7 +280,12 @@ export class SheetGrid {
       this.paintAll(this.layout);
     } else if (rects.length > 0) {
       this.paintDirtyRects(this.layout, rects);
+      // Headers are unaffected by cell content; repaint them only when the
+      // selection highlight moved (headerDirty) or on scroll/full redraw.
+    } else if (this.headerDirty) {
+      this.paintHeaders(this.layout);
     }
+    this.headerDirty = false;
     // Overlay is cheap: repaint on any content change too (selection geometry
     // may shift with scroll), or when selection itself changed.
     this.paintOverlay(this.layout);
@@ -600,60 +630,55 @@ export class SheetGrid {
     }
     ctx.stroke();
 
-    this.paintScrollbars(layout);
+    this.paintScrollbars();
     ctx.restore();
   }
 
-  private paintScrollbars(layout: ViewportLayout): void {
+  private paintScrollbars(): void {
     const ctx = this.overlayCtx;
     const theme = this.theme;
-    const w = this.contentWidth();
-    const h = this.contentHeight();
-    const frozenW = layout.frozenWidth;
-    const frozenH = layout.frozenHeight;
+    const geometry = this.scrollbarGeometry();
 
-    // Vertical scrollbar.
-    const trackX = w - SCROLLBAR;
-    const trackY = this.headerHeight;
-    const trackH = h - this.headerHeight - SCROLLBAR;
-    const totalH = this.rows.totalSize + frozenH;
-    const viewH = h - this.headerHeight - frozenH;
-    if (trackH > 0 && totalH > viewH) {
-      const thumbH = Math.max(24, (viewH / totalH) * trackH);
-      const maxScroll = totalH - viewH;
-      const thumbY = trackY + (this.scrollY / maxScroll) * (trackH - thumbH);
+    if (geometry.vertical !== null) {
+      const v = geometry.vertical;
       ctx.fillStyle = theme.scrollbarTrack;
-      ctx.fillRect(trackX, trackY, SCROLLBAR, trackH);
+      ctx.fillRect(v.x, v.trackStart, SCROLLBAR, v.trackSize);
       ctx.fillStyle = theme.scrollbarThumb;
-      ctx.fillRect(trackX + 2, thumbY, SCROLLBAR - 4, thumbH);
+      ctx.fillRect(v.x + 2, v.y, SCROLLBAR - 4, v.height);
     }
+    if (geometry.horizontal !== null) {
+      const hh = geometry.horizontal;
+      ctx.fillStyle = theme.scrollbarTrack;
+      ctx.fillRect(hh.trackStart, hh.y, hh.trackSize, SCROLLBAR);
+      ctx.fillStyle = theme.scrollbarThumb;
+      ctx.fillRect(hh.x, hh.y + 2, hh.width, SCROLLBAR - 4);
+    }
+  }
 
-    // Horizontal scrollbar.
-    const trackHX = this.headerWidth;
-    const trackHW = w - this.headerWidth - SCROLLBAR;
-    const totalW = this.cols.totalSize + frozenW;
-    const viewW = w - this.headerWidth - frozenW;
-    if (trackHW > 0 && totalW > viewW) {
-      const thumbW = Math.max(24, (viewW / totalW) * trackHW);
-      const maxScroll = totalW - viewW;
-      const thumbX = trackHX + (this.scrollX / maxScroll) * (trackHW - thumbW);
-      ctx.fillStyle = theme.scrollbarTrack;
-      ctx.fillRect(trackHX, h - SCROLLBAR, trackHW, SCROLLBAR);
-      ctx.fillStyle = theme.scrollbarThumb;
-      ctx.fillRect(thumbX, h - SCROLLBAR + 2, thumbW, SCROLLBAR - 4);
-    }
+  private scrollbarGeometry(): ScrollbarGeometry {
+    const layout = this.layout ?? this.computeLayout();
+    return computeScrollbarGeometry({
+      layout,
+      rows: this.rows,
+      cols: this.cols,
+      scrollX: this.scrollX,
+      scrollY: this.scrollY,
+      width: this.contentWidth(),
+      height: this.contentHeight(),
+      headerWidth: this.headerWidth,
+      headerHeight: this.headerHeight,
+      scrollbarSize: SCROLLBAR,
+    });
   }
 
   // --- input ----------------------------------------------------------------
 
   private attachInputHandlers(): void {
-    this.container.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
+    this.container.addEventListener("wheel", this.handleWheelBound, { passive: false });
     this.overlayCanvas.addEventListener("mousedown", (e) => this.onMouseDown(e));
-    globalThis.addEventListener("mousemove", (e) => this.onMouseMove(e));
-    globalThis.addEventListener("mouseup", () => {
-      this.drag = null;
-    });
-    this.container.addEventListener("keydown", (e) => this.onKeyDown(e));
+    globalThis.addEventListener("mousemove", this.handleMouseMoveBound);
+    globalThis.addEventListener("mouseup", this.handleMouseUpBound);
+    this.container.addEventListener("keydown", this.handleKeyDownBound);
   }
 
   private onWheel(e: WheelEvent): void {
@@ -675,23 +700,22 @@ export class SheetGrid {
     const { x, y } = this.canvasPoint(e);
 
     // Scrollbar hit test.
-    const w = this.contentWidth();
-    const h = this.contentHeight();
-    if (x >= w - SCROLLBAR && y >= this.headerHeight && y <= h - SCROLLBAR) {
-      this.drag = { kind: "v-scroll", grabOffset: y - this.vThumbTop() };
+    const geometry = this.scrollbarGeometry();
+    if (geometry.vertical !== null && x >= geometry.vertical.x && y >= geometry.vertical.trackStart) {
+      this.drag = { kind: "v-scroll", grabOffset: y - geometry.vertical.y };
       return;
     }
-    if (y >= h - SCROLLBAR && x >= this.headerWidth && x <= w - SCROLLBAR) {
-      this.drag = { kind: "h-scroll", grabOffset: x - this.hThumbLeft() };
+    if (geometry.horizontal !== null && y >= geometry.horizontal.y && x >= geometry.horizontal.trackStart) {
+      this.drag = { kind: "h-scroll", grabOffset: x - geometry.horizontal.x };
       return;
     }
 
-    const cell = this.hitTestCell(x, y);
-    if (cell === null) return;
+    const hit = this.hitTest(x, y);
+    if (hit.zone !== "cell") return;
     if (e.shiftKey) {
-      this.selection.extendTo(cell);
+      this.selection.extendTo(hit);
     } else {
-      this.selection.setActive(cell);
+      this.selection.setActive(hit);
     }
     this.drag = { kind: "select" };
     this.notifySelection();
@@ -701,21 +725,19 @@ export class SheetGrid {
   private onMouseMove(e: MouseEvent): void {
     if (this.drag === null) return;
     const { x, y } = this.canvasPoint(e);
-    if (this.drag.kind === "v-scroll") {
+    const geometry = this.scrollbarGeometry();
+    if (this.drag.kind === "v-scroll" && geometry.vertical !== null) {
+      const v = geometry.vertical;
       const thumbTop = y - this.drag.grabOffset;
-      const trackH = this.contentHeight() - this.headerHeight - SCROLLBAR;
-      const thumbH = this.vThumbHeight();
-      const maxScroll = this.maxScrollY();
-      const ratio = (thumbTop - this.headerHeight) / Math.max(1, trackH - thumbH);
-      this.setScroll(this.scrollX, ratio * maxScroll);
+      const ratio = (thumbTop - v.trackStart) / Math.max(1, v.trackSize - v.height);
+      this.setScroll(this.scrollX, ratio * v.maxScroll);
       return;
     }
-    if (this.drag.kind === "h-scroll") {
+    if (this.drag.kind === "h-scroll" && geometry.horizontal !== null) {
+      const hh = geometry.horizontal;
       const thumbLeft = x - this.drag.grabOffset;
-      const trackW = this.contentWidth() - this.headerWidth - SCROLLBAR;
-      const thumbW = this.hThumbWidth();
-      const ratio = (thumbLeft - this.headerWidth) / Math.max(1, trackW - thumbW);
-      this.setScroll(ratio * this.maxScrollX(), this.scrollY);
+      const ratio = (thumbLeft - hh.trackStart) / Math.max(1, hh.trackSize - hh.width);
+      this.setScroll(ratio * hh.maxScroll, this.scrollY);
       return;
     }
     // Drag-select with edge auto-scroll.
@@ -728,9 +750,9 @@ export class SheetGrid {
     if (y > this.contentHeight() - EDGE) dy = step;
     else if (y < this.headerHeight + EDGE) dy = -step;
     if (dx !== 0 || dy !== 0) this.setScroll(this.scrollX + dx, this.scrollY + dy);
-    const cell = this.hitTestCell(x, y);
-    if (cell !== null) {
-      this.selection.extendTo(cell);
+    const hit = this.hitTest(x, y);
+    if (hit.zone === "cell") {
+      this.selection.extendTo(hit);
       this.notifySelection();
       this.scheduleOverlay();
     }
@@ -804,26 +826,27 @@ export class SheetGrid {
     this.setScroll(next.scrollX, next.scrollY);
   }
 
-  private hitTestCell(x: number, y: number): { row: number; col: number } | null {
-    if (x < this.headerWidth || y < this.headerHeight) return null;
-    const frozenCols = this.worksheet.frozenColumns;
-    const frozenRows = this.worksheet.frozenRows;
-    const frozenW = this.cols.positionOf(frozenCols);
-    const frozenH = this.rows.positionOf(frozenRows);
-
-    const inFrozenCol = x < this.headerWidth + frozenW;
-    const inFrozenRow = y < this.headerHeight + frozenH;
-    const col = inFrozenCol
-      ? this.cols.indexAt(x - this.headerWidth)
-      : this.cols.indexAt(this.scrollX + (x - this.headerWidth - frozenW));
-    const row = inFrozenRow
-      ? this.rows.indexAt(y - this.headerHeight)
-      : this.rows.indexAt(this.scrollY + (y - this.headerHeight - frozenH));
-    if (row >= this.worksheet.rowCount || col >= this.worksheet.columnCount) return null;
-    return { row, col };
+  private hitTest(x: number, y: number): import("./coordinate-mapper.js").CellHit {
+    const layout = this.layout ?? this.computeLayout();
+    return hitTestCell({
+      x,
+      y,
+      layout,
+      rows: this.rows,
+      cols: this.cols,
+      scrollX: this.scrollX,
+      scrollY: this.scrollY,
+      headerWidth: this.headerWidth,
+      headerHeight: this.headerHeight,
+      scrollbarSize: SCROLLBAR,
+      rowCount: this.worksheet.rowCount,
+      colCount: this.worksheet.columnCount,
+    });
   }
 
   private scheduleOverlay(): void {
+    // Selection moved: row/col header highlights live on the Content canvas.
+    this.headerDirty = true;
     this.scheduleFrame();
   }
 
@@ -834,39 +857,11 @@ export class SheetGrid {
 
   // --- scrollbar geometry ---------------------------------------------------
 
-  private maxScrollY(): number {
-    const frozenH = this.rows.positionOf(this.worksheet.frozenRows);
-    return Math.max(0, this.rows.totalSize + frozenH - (this.contentHeight() - this.headerHeight - frozenH));
-  }
 
-  private maxScrollX(): number {
-    const frozenW = this.cols.positionOf(this.worksheet.frozenColumns);
-    return Math.max(0, this.cols.totalSize + frozenW - (this.contentWidth() - this.headerWidth - frozenW));
-  }
 
-  private vThumbHeight(): number {
-    const trackH = this.contentHeight() - this.headerHeight - SCROLLBAR;
-    const totalH = this.rows.totalSize + this.rows.positionOf(this.worksheet.frozenRows);
-    const viewH = this.contentHeight() - this.headerHeight - this.rows.positionOf(this.worksheet.frozenRows);
-    return Math.max(24, (viewH / Math.max(viewH + 1, totalH)) * trackH);
-  }
 
-  private hThumbWidth(): number {
-    const trackW = this.contentWidth() - this.headerWidth - SCROLLBAR;
-    const totalW = this.cols.totalSize + this.cols.positionOf(this.worksheet.frozenColumns);
-    const viewW = this.contentWidth() - this.headerWidth - this.cols.positionOf(this.worksheet.frozenColumns);
-    return Math.max(24, (viewW / Math.max(viewW + 1, totalW)) * trackW);
-  }
 
-  private vThumbTop(): number {
-    const trackH = this.contentHeight() - this.headerHeight - SCROLLBAR;
-    return this.headerHeight + (this.scrollY / Math.max(1, this.maxScrollY())) * (trackH - this.vThumbHeight());
-  }
 
-  private hThumbLeft(): number {
-    const trackW = this.contentWidth() - this.headerWidth - SCROLLBAR;
-    return this.headerWidth + (this.scrollX / Math.max(1, this.maxScrollX())) * (trackW - this.hThumbWidth());
-  }
 }
 
 function colName(col: number): string {

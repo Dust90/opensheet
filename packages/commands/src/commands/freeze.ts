@@ -10,7 +10,7 @@ export interface SheetFreezePayload {
 
 export const sheetFreezeCommand: SheetCommand<SheetFreezePayload> = {
   id: "sheet.freeze",
-  validate(payload) {
+  validate(payload, ctx) {
     if (
       !Number.isInteger(payload.frozenRows) ||
       payload.frozenRows < 0 ||
@@ -18,6 +18,14 @@ export const sheetFreezeCommand: SheetCommand<SheetFreezePayload> = {
       payload.frozenColumns < 0
     ) {
       throw new SheetError("E_VALIDATION", "sheet.freeze counts must be non-negative integers");
+    }
+    const sheet = ctx.workbook.getSheet(ctx.sheetId);
+    if (payload.frozenRows > sheet.rowCount || payload.frozenColumns > sheet.columnCount) {
+      throw new SheetError(
+        "E_VALIDATION",
+        `sheet.freeze exceeds sheet bounds: sheet is ${sheet.rowCount}x${sheet.columnCount}, ` +
+          `requested ${payload.frozenRows}x${payload.frozenColumns}`,
+      );
     }
   },
   execute(ctx, payload): CommandOutcome {

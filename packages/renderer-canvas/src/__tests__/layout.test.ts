@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AxisMetrics } from "../axis-metrics.js";
+import { computeScrollbarGeometry, hitTestCell } from "../coordinate-mapper.js";
 import { DirtyRegionTracker, rangeToCanvasRects } from "../dirty-region.js";
 import { SelectionModel } from "../selection.js";
 import { clampScroll, computeScrollToCell, computeViewport, type ViewportInput } from "../viewport.js";
@@ -96,17 +97,54 @@ describe("computeViewport", () => {
     expect(layout.corner!.colEnd).toBe(0);
     // top strip: frozen rows, scrolled cols
     expect(layout.top!.rowStart).toBe(0);
-    expect(layout.top!.colStart).toBe(3); // scrollX 300 → col 3
+    // scroll is relative to the non-frozen area: content pos = frozen(100) + 300
+    expect(layout.top!.colStart).toBe(4); // indexAt(400) = col 4
     expect(layout.top!.originY).toBe(26); // directly under header
     // left strip: scrolled rows, frozen cols
     expect(layout.left!.colStart).toBe(0);
-    expect(layout.left!.rowStart).toBe(10); // scrollY 240 / 24 → row 10
+    expect(layout.left!.rowStart).toBe(12); // indexAt(48 + 240) = row 12
     expect(layout.left!.originX).toBe(48);
     // main starts after frozen zones
-    expect(layout.main.rowStart).toBe(10);
-    expect(layout.main.colStart).toBe(3);
-    expect(layout.main.originY).toBe(26 + 48 + (240 - 240));
-    expect(layout.main.originX).toBe(48 + 100 + (300 - 300));
+    expect(layout.main.rowStart).toBe(12);
+    expect(layout.main.colStart).toBe(4);
+    expect(layout.main.originY).toBe(26 + 48 + (rows.positionOf(12) - 48 - 240)); // 0
+    expect(layout.main.originX).toBe(48 + 100 + (cols.positionOf(4) - 100 - 300)); // 0
+  });
+
+  it("scroll=0 + freeze 1x1: main starts at B2, frozen content not duplicated", () => {
+    const { rows, cols } = makeAxes();
+    const layout = computeViewport(
+      viewportInput(rows, cols, { frozenRowCount: 1, frozenColCount: 1 }),
+    );
+    expect(layout.main.rowStart).toBe(1);
+    expect(layout.main.colStart).toBe(1);
+    expect(layout.main.originX).toBe(48 + 100);
+    expect(layout.main.originY).toBe(26 + 24);
+    expect(layout.corner).not.toBeNull();
+    expect(layout.top!.colStart).toBe(1); // top strip scrolls cols from B
+    expect(layout.left!.rowStart).toBe(1); // left strip scrolls rows from row 2
+  });
+
+  it("scroll=0 + freeze: hit test at first main cell returns B2, not A1", () => {
+    const { rows, cols } = makeAxes();
+    const layout = computeViewport(viewportInput(rows, cols, { frozenRowCount: 1, frozenColCount: 1 }));
+    const hit = hitTestCell({
+      x: 48 + 100 + 10,
+      y: 26 + 24 + 10,
+      layout,
+      rows,
+      cols,
+      scrollX: 0,
+      scrollY: 0,
+      headerWidth: 48,
+      headerHeight: 26,
+      scrollbarSize: 10,
+      rowCount: ROWS,
+      colCount: COLS,
+    });
+    expect(hit.zone).toBe("cell");
+    expect(hit.row).toBe(1);
+    expect(hit.col).toBe(1);
   });
 });
 
@@ -143,6 +181,30 @@ describe("computeScrollToCell / clampScroll", () => {
     const clamped = clampScroll({ scrollX: 999999, scrollY: -5 }, rows, cols, 752, 574, 0, 0);
     expect(clamped.scrollY).toBe(0);
     expect(clamped.scrollX).toBe(cols.totalSize - 752);
+  });
+
+  it("scrollbar geometry excludes the frozen zone from extents", () => {
+    const { rows, cols } = makeAxes();
+    const layout = computeViewport(
+      viewportInput(rows, cols, { frozenRowCount: 1, frozenColCount: 1 }),
+    );
+    const geo = computeScrollbarGeometry({
+      layout,
+      rows,
+      cols,
+      scrollX: 0,
+      scrollY: 0,
+      width: 800,
+      height: 600,
+      headerWidth: 48,
+      headerHeight: 26,
+      scrollbarSize: 10,
+    });
+    expect(geo.vertical).not.toBeNull();
+    expect(geo.horizontal).not.toBeNull();
+    // maxScroll = scrollable - main window (frozen zone not double-counted)
+    expect(geo.vertical!.maxScroll).toBe(rows.totalSize - 24 - (600 - 26 - 24));
+    expect(geo.horizontal!.maxScroll).toBe(cols.totalSize - 100 - (800 - 48 - 100));
   });
 });
 
