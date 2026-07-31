@@ -1,7 +1,7 @@
 // Command + journal contracts (inverse patch journal, ADR-0003).
 
 import type { Workbook, WorkbookView } from "@opensheet/core";
-import type { CellData, ChangeKind, ChangeSource, Range } from "@opensheet/shared";
+import type { CellValue, ChangeKind, ChangeSource, Range } from "@opensheet/shared";
 
 /** Minimal context available while undoing/redoing journal entries. */
 export interface JournalReplayContext {
@@ -56,26 +56,38 @@ export interface HistorySink {
   push(batch: JournalBatch): void;
 }
 
+/** A range this transaction is about to touch (drives M3 incremental recalc). */
+export interface PendingChange {
+  readonly sheetId: string;
+  readonly range: Range;
+  readonly kind: ChangeKind;
+}
+
 /**
- * Transaction-scoped writer for derived (recalculated) values. Every write:
- * captures the previous value, applies the change, emits a "derived" event
- * into the transaction buffer, AND appends an inverse patch to the current
- * transaction's rollback journal. Derived patches are used for rollback only
- * — they never enter user Undo history (recomputed naturally instead).
+ * Transaction-scoped writer for derived (recalculated) values (M3.0).
+ * Hooks may ONLY write computed VALUES — metadata (formula, styleId,
+ * numberFormat) is preserved automatically, so a sloppy engine can never
+ * wipe formatting. Every write: captures the previous value, applies the
+ * change, emits a "derived" event into the transaction buffer, AND appends
+ * an inverse patch to the current transaction's rollback journal. Derived
+ * patches are used for rollback only — they never enter user Undo history.
  */
 export interface DerivedWriter {
-  setCell(sheetId: string, row: number, col: number, data: CellData): void;
-  clearCell(sheetId: string, row: number, col: number): void;
+  setComputedValue(sheetId: string, row: number, col: number, value: CellValue): void;
 }
 
 /** Runs inside the open transaction, right before commit (ADR-0003).
  *  The formula engine (M3) hooks here to fold derived recalculation results
- *  into the same merged change event. Hooks MUST write through `derived` —
- *  the `workbook` here is a READ-ONLY WorkbookView (M3 guardrail), so direct
- *  mutation is impossible at the type level; only DerivedWriter writes, and
- *  those are journaled for rollback. */
+ *  into the same merged change event.
+ *  - `workbook`: READ-ONLY WorkbookView (M3 guardrail) — hooks cannot mutate.
+ *  - `changes`: the ranges/kinds this transaction is about to commit, derived
+ *    from the journal's affected ranges. Lets the engine recompute ONLY the
+ *    dirty subgraph instead of scanning every formula.
+ *  - `derived`: the ONLY write path; journaled for rollback.
+ */
 export type BeforeCommitHook = (ctx: {
   workbook: WorkbookView;
   source: ChangeSource;
+  changes: readonly PendingChange[];
   derived: DerivedWriter;
 }) => void;

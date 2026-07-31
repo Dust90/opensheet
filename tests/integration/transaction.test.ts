@@ -95,11 +95,11 @@ describe("derived (beforeCommit) channel", () => {
     const { workbook, history, bus, events } = setup();
     // Simulates the M3 formula engine: recompute B1 = A1*2 before commit.
     // The hook receives a READ-ONLY WorkbookView (guardrail 3): reads via
-    // getSheetView, writes ONLY via derived.
+    // getSheetView, writes ONLY via derived.setComputedValue (M3.0).
     bus.addBeforeCommitHook(({ workbook: wb, derived }) => {
       const source = wb.getSheetView("s1").getCell(0, 0)?.value;
       if (typeof source === "number") {
-        derived.setCell("s1", 0, 1, { value: source * 2, formula: "=A1*2" });
+        derived.setComputedValue("s1", 0, 1, source * 2);
       }
     });
 
@@ -110,6 +110,63 @@ describe("derived (beforeCommit) channel", () => {
     expect(events).toHaveLength(2);
     expect(events.map((e) => e.source).sort()).toEqual(["derived", "user"]);
     expect(history.undoDepth).toBe(1); // derived never recorded
+  });
+
+  it("M3.0: hook receives the transaction's pending changes", () => {
+    const { bus } = setup();
+    const seen: Array<{ sheetId: string; range: string; kind: string }> = [];
+    bus.addBeforeCommitHook(({ changes }) => {
+      for (const c of changes) {
+        seen.push({
+          sheetId: c.sheetId,
+          range: `${c.range.startRow}:${c.range.startCol}-${c.range.endRow}:${c.range.endCol}`,
+          kind: c.kind,
+        });
+      }
+    });
+
+    bus.applyOperations({
+      sheetId: "s1",
+      atomic: true,
+      operations: [
+        { type: "range.write", range: "A1:B2", values: [["a", 1], ["b", 2]] },
+        { type: "range.style", range: "A1", style: { bold: true } },
+      ],
+    });
+    expect(seen).toContainEqual({ sheetId: "s1", range: "0:0-1:1", kind: "cells" });
+    expect(seen).toContainEqual({ sheetId: "s1", range: "0:0-0:0", kind: "style" });
+  });
+
+  it("M3.0: setComputedValue preserves formula/styleId and rejects out-of-bounds", () => {
+    const { workbook, bus } = setup();
+    // Give B1 a formula + style, then a hook recomputes its value.
+    bus.applyOperations({
+      sheetId: "s1",
+      atomic: true,
+      operations: [
+        { type: "range.style", range: "B1", style: { bold: true } },
+        { type: "cell.set", range: "B1", value: 0 },
+      ],
+    });
+    const styleId = workbook.getSheet("s1").getCell(0, 1)!.styleId!;
+    bus.addBeforeCommitHook(({ derived }) => {
+      derived.setComputedValue("s1", 0, 1, 7);
+    });
+    bus.execute("cell.set", { range: "A1", value: 1 }, { sheetId: "s1" });
+
+    const b1 = workbook.getSheet("s1").getCell(0, 1)!;
+    expect(b1.value).toBe(7);
+    expect(b1.styleId).toBe(styleId); // metadata preserved
+    expect(b1.formula).toBeUndefined(); // hook did not set one — stays absent
+
+    // Out-of-bounds derived write must throw (and roll back the transaction).
+    bus.addBeforeCommitHook(({ derived }) => {
+      derived.setComputedValue("s1", 9999, 0, 1);
+    });
+    expect(() =>
+      bus.execute("cell.set", { range: "A1", value: 2 }, { sheetId: "s1" }),
+    ).toThrow(/out of bounds/);
+    expect(workbook.getSheet("s1").getCell(0, 1)!.value).toBe(7); // rolled back
   });
 
   it("hook is NOT called on failed transactions (no partial derived state)", () => {
@@ -140,7 +197,7 @@ describe("derived (beforeCommit) channel", () => {
     const before = JSON.stringify(toWorkbookSnapshot(workbook));
 
     bus.addBeforeCommitHook(({ derived }) => {
-      derived.setCell("s1", 0, 1, { value: 999 }); // derived write happens first...
+      derived.setComputedValue("s1", 0, 1, 999); // derived write happens first...
       throw new Error("recalc exploded"); // ...then the hook fails
     });
 

@@ -12,6 +12,7 @@ export type {
   JournalBatch,
   JournalEntry,
   JournalReplayContext,
+  PendingChange,
   SheetCommand,
 } from "./types.js";
 export {

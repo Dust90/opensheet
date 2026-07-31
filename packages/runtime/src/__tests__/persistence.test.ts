@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createOpenSheet, createPersistence, validateSnapshot, type StorageLike } from "../index.js";
-import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION, type WorkbookSnapshot } from "@opensheet/shared";
 
 function memoryStorage(seed: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...seed };
@@ -137,7 +137,19 @@ describe("createPersistence", () => {
         id: "wb",
         name: "n",
         activeSheetId: "s",
-        sheets: [{ id: "s", name: "S", rowCount: 1, columnCount: 1, cells: {} }],
+        sheets: [
+          {
+            id: "s",
+            name: "S",
+            rowCount: 1,
+            columnCount: 1,
+            cells: {},
+            rowHeights: {},
+            columnWidths: {},
+            frozenRows: 0,
+            frozenColumns: 0,
+          },
+        ],
         styles: {},
       }),
     ).toBe(true);
@@ -154,7 +166,18 @@ describe("createPersistence", () => {
       activeSheetId: "s",
       styles: {},
     };
-    const sheet = (over: Record<string, unknown>) => ({ id: "s", name: "S", rowCount: 10, columnCount: 5, cells: {}, ...over });
+    const sheet = (over: Record<string, unknown>) => ({
+      id: "s",
+      name: "S",
+      rowCount: 10,
+      columnCount: 5,
+      cells: {},
+      rowHeights: {},
+      columnWidths: {},
+      frozenRows: 0,
+      frozenColumns: 0,
+      ...over,
+    });
     const make = (s: Record<string, unknown>) => ({ ...base, sheets: [sheet(s)] });
 
     expect(validateSnapshot(make({ rowCount: 0 }))).toBe(false); // zero rows
@@ -180,5 +203,121 @@ describe("createPersistence", () => {
     expect(validateSnapshot(make({ rowHeights: { 3: NaN } }))).toBe(false);
     expect(validateSnapshot(make({ columnWidths: { 4: 80 } }))).toBe(true);
     expect(validateSnapshot(make({ columnWidths: { 5: 80 } }))).toBe(false);
+  });
+
+  it("M2.9: required fields are enforced — no implicit defaults", () => {
+    const base = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "n",
+      activeSheetId: "s",
+      styles: {},
+    };
+    const full = {
+      id: "s",
+      name: "S",
+      rowCount: 10,
+      columnCount: 5,
+      cells: {},
+      rowHeights: {},
+      columnWidths: {},
+      frozenRows: 0,
+      frozenColumns: 0,
+    };
+    const make = (s: unknown) => ({ ...base, sheets: [s] });
+
+    expect(validateSnapshot(make(full))).toBe(true);
+    // Each required field, when removed, must be rejected (no defaulting).
+    for (const field of ["rowHeights", "columnWidths", "frozenRows", "frozenColumns", "cells"] as const) {
+      const { [field]: _omitted, ...rest } = full;
+      expect(validateSnapshot(make(rest))).toBe(false);
+    }
+    expect(validateSnapshot(make({ ...full, cells: [] }))).toBe(false); // cells must be an object, not array
+    expect(validateSnapshot(make({ ...full, rowHeights: [] }))).toBe(false); // size maps too
+    expect(validateSnapshot(make({ ...full, frozenRows: "0" }))).toBe(false); // not a number
+
+    // styles must be a plain object (not array).
+    expect(validateSnapshot({ ...base, styles: [] })).toBe(false);
+
+    // Duplicate sheet ids rejected.
+    expect(
+      validateSnapshot({
+        ...base,
+        sheets: [
+          full,
+          { ...full, id: "s", name: "other" },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("M2.9: CellData values and metadata are validated", () => {
+    const base = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "n",
+      activeSheetId: "s",
+      styles: {},
+    };
+    const full = {
+      id: "s",
+      name: "S",
+      rowCount: 10,
+      columnCount: 5,
+      cells: {},
+      rowHeights: {},
+      columnWidths: {},
+      frozenRows: 0,
+      frozenColumns: 0,
+    };
+    const make = (cells: Record<string, unknown>) =>
+      validateSnapshot({ ...base, sheets: [{ ...full, cells }] });
+
+    expect(make({ "0:0": { value: "x" } })).toBe(true);
+    expect(make({ "0:0": { value: 1.5 } })).toBe(true);
+    expect(make({ "0:0": { value: true } })).toBe(true);
+    expect(make({ "0:0": { value: null } })).toBe(true);
+    expect(make({ "0:0": { value: { type: "#DIV/0!", message: "boom" } } })).toBe(true);
+    expect(make({ "0:0": { value: { type: "#NOPE" } } })).toBe(false); // unsupported error type
+    expect(make({ "0:0": { value: {} } })).toBe(false); // error without type
+    expect(make({ "0:0": { value: undefined } })).toBe(false); // missing value
+    expect(make({ "0:0": { value: "x", formula: 5 } })).toBe(false); // metadata must be strings
+    expect(make({ "0:0": { value: "x", styleId: true } })).toBe(false);
+    expect(make({ "0:0": { value: "x", numberFormat: {} } })).toBe(false);
+    expect(make({ "0:0": "not-an-object" })).toBe(false);
+  });
+
+  it("M2.9: validate-true implies loadable (property test)", () => {
+    // Any snapshot the validator accepts must load without throwing.
+    const valid: WorkbookSnapshot = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "n",
+      activeSheetId: "s",
+      sheets: [
+        {
+          id: "s",
+          name: "S",
+          rowCount: 3,
+          columnCount: 2,
+          cells: {
+            "0:0": { value: "a1", styleId: "s1" },
+            "1:1": { value: { type: "#REF!" }, formula: "=#REF!" },
+            "2:0": { value: 42, numberFormat: "0.00" },
+          },
+          rowHeights: { 1: 30 },
+          columnWidths: { 0: 120 },
+          frozenRows: 1,
+          frozenColumns: 1,
+        },
+      ],
+      styles: { s1: { bold: true } },
+    };
+    expect(validateSnapshot(valid)).toBe(true);
+    const api = createOpenSheet();
+    const wb = api.loadWorkbook(valid); // must not throw
+    expect(wb.name).toBe("n");
+    const value = api.readRange({ sheetId: wb.activeSheetId, range: "A1" })[0]![0];
+    expect(value).toBe("a1");
   });
 });

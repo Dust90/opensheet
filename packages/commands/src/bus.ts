@@ -2,7 +2,7 @@
 // buffered events (ADR-0003).
 
 import type { Workbook } from "@opensheet/core";
-import { isSheetError, type CellData, type ChangeSource } from "@opensheet/shared";
+import { isSheetError, SheetError, type CellData, type ChangeSource } from "@opensheet/shared";
 import { ApplyOperationsError, type ApplyOperationsResult } from "./operations.js";
 import { CommandRegistry } from "./registry.js";
 import type {
@@ -12,6 +12,7 @@ import type {
   HistorySink,
   JournalBatch,
   JournalEntry,
+  PendingChange,
 } from "./types.js";
 
 export interface OperationEnvelope {
@@ -128,7 +129,7 @@ export class CommandBus {
         else entry.redo(ctx);
         completed.push(entry);
       }
-      this.runBeforeCommitHooks(source, derivedJournal);
+      this.runBeforeCommitHooks(source, derivedJournal, batch.entries);
       this.workbook.endBatch(true);
     } catch (error) {
       // Best-effort restore of whatever was already replayed, then discard
@@ -171,7 +172,7 @@ export class CommandBus {
           0,
         );
       }
-      this.runBeforeCommitHooks(source, derivedJournal);
+      this.runBeforeCommitHooks(source, derivedJournal, journal);
       this.workbook.endBatch(true);
     } catch (error) {
       // Reverse-replay both journals inside the still-open batch; buffered
@@ -199,56 +200,66 @@ export class CommandBus {
     return { results, affected };
   }
 
-  private runBeforeCommitHooks(source: ChangeSource, derivedJournal: JournalEntry[]): void {
+  private runBeforeCommitHooks(
+    source: ChangeSource,
+    derivedJournal: JournalEntry[],
+    journal: readonly JournalEntry[],
+  ): void {
     if (this.beforeCommitHooks.length === 0) return;
     const derived = this.makeDerivedWriter(derivedJournal);
     // Guardrail 3 (M2.8): hooks receive a read-only WorkbookView — they can
     // read cells/styles freely but can only WRITE through DerivedWriter,
     // which journals every mutation for rollback.
     const view = this.workbook.asView();
+    // M3.0: tell the engine exactly which ranges this transaction touches so
+    // it can recompute the dirty subgraph instead of scanning every formula.
+    const changes: PendingChange[] = [];
+    for (const entry of journal) changes.push(...entry.affected);
     for (const hook of this.beforeCommitHooks) {
-      hook({ workbook: view, source, derived });
+      hook({ workbook: view, source, changes, derived });
     }
   }
 
   /**
-   * Derived writes are tracked: previous value captured, change applied,
-   * derived event buffered, inverse patch appended to the rollback journal.
+   * Derived writes (M3.0): hooks set ONLY computed values; formula, styleId
+   * and numberFormat are preserved automatically. Every write captures the
+   * previous value, applies the change, emits a "derived" event into the
+   * transaction buffer, AND appends an inverse patch to the rollback journal.
    */
   private makeDerivedWriter(derivedJournal: JournalEntry[]): DerivedWriter {
     const workbook = this.workbook;
-    const write = (sheetId: string, row: number, col: number, data: CellData | undefined): void => {
-      const sheet = workbook.getSheet(sheetId);
-      const previous = sheet.getCell(row, col);
-      const previousClone = previous === undefined ? undefined : { ...previous };
-      const nextClone = data === undefined ? undefined : { ...data };
-      if (nextClone === undefined) sheet.deleteCell(row, col);
-      else sheet.setCell(row, col, nextClone);
-      const range = { startRow: row, startCol: col, endRow: row, endCol: col };
-      workbook.emit({
-        workbookId: workbook.id,
-        sheetId,
-        changes: [{ range, kind: "cells" }],
-        source: "derived",
-        batch: false,
-      });
-      derivedJournal.push({
-        label: "derived.write",
-        affected: [{ sheetId, range, kind: "cells" }],
-        approxBytes: 192,
-        undo: () => {
-          if (previousClone === undefined) sheet.deleteCell(row, col);
-          else sheet.setCell(row, col, { ...previousClone });
-        },
-        redo: () => {
-          if (nextClone === undefined) sheet.deleteCell(row, col);
-          else sheet.setCell(row, col, { ...nextClone });
-        },
-      });
-    };
     return {
-      setCell: (sheetId, row, col, data) => write(sheetId, row, col, data),
-      clearCell: (sheetId, row, col) => write(sheetId, row, col, undefined),
+      setComputedValue: (sheetId, row, col, value) => {
+        const sheet = workbook.getSheet(sheetId);
+        if (row < 0 || row >= sheet.rowCount || col < 0 || col >= sheet.columnCount) {
+          throw new SheetError("E_INVALID_RANGE", `derived write out of bounds: ${row}:${col}`);
+        }
+        const previous = sheet.getCell(row, col);
+        const previousClone = previous === undefined ? undefined : { ...previous };
+        // Preserve formula/styleId/numberFormat; only the value is replaced.
+        const next: CellData = { ...(previousClone ?? {}), value };
+        sheet.setCell(row, col, next);
+        const range = { startRow: row, startCol: col, endRow: row, endCol: col };
+        workbook.emit({
+          workbookId: workbook.id,
+          sheetId,
+          changes: [{ range, kind: "cells" }],
+          source: "derived",
+          batch: false,
+        });
+        derivedJournal.push({
+          label: "derived.write",
+          affected: [{ sheetId, range, kind: "cells" }],
+          approxBytes: 192,
+          undo: () => {
+            if (previousClone === undefined) sheet.deleteCell(row, col);
+            else sheet.setCell(row, col, { ...previousClone });
+          },
+          redo: () => {
+            sheet.setCell(row, col, { ...next });
+          },
+        });
+      },
     };
   }
 }

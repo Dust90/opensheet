@@ -53,37 +53,50 @@ const DEFAULT_KEY = "opensheet:workbook";
  * row-height/column-width entries.
  */
 export function validateSnapshot(value: unknown): value is WorkbookSnapshot {
-  if (typeof value !== "object" || value === null) return false;
+  if (!isPlainRecord(value)) return false;
   const v = value as Record<string, unknown>;
   if (v.version !== WORKBOOK_SNAPSHOT_VERSION) return false;
   if (typeof v.id !== "string" || typeof v.name !== "string") return false;
   if (typeof v.activeSheetId !== "string") return false;
   if (!Array.isArray(v.sheets) || v.sheets.length === 0) return false;
-  if (typeof v.styles !== "object" || v.styles === null) return false;
+  if (!isPlainRecord(v.styles)) return false;
   if (!v.sheets.every(validateWorksheetSnapshot)) return false;
+  // Sheet ids must be unique (loader keys sheets by id).
+  const ids = (v.sheets as unknown[]).map((sheet) => (sheet as Record<string, unknown>).id);
+  if (new Set(ids).size !== ids.length) return false;
   // activeSheetId must reference an existing sheet.
   return (v.sheets as unknown[]).some(
     (sheet) => (sheet as Record<string, unknown>).id === v.activeSheetId,
   );
 }
 
+/**
+ * Strict Version-1 validation: every contract field is REQUIRED — no
+ * implicit defaults. "Valid" here is exactly "workbookFromSnapshot can load
+ * this without throwing".
+ */
 function validateWorksheetSnapshot(sheet: unknown): boolean {
-  if (typeof sheet !== "object" || sheet === null) return false;
+  if (!isPlainRecord(sheet)) return false;
   const s = sheet as Record<string, unknown>;
   if (typeof s.id !== "string" || typeof s.name !== "string") return false;
   if (!isBoundedSize(s.rowCount, MAX_ROWS) || !isBoundedSize(s.columnCount, MAX_COLS)) return false;
   const rowCount = s.rowCount as number;
   const columnCount = s.columnCount as number;
-  const frozenRows = s.frozenRows ?? 0;
-  const frozenColumns = s.frozenColumns ?? 0;
-  if (!isFreeze(frozenRows, rowCount) || !isFreeze(frozenColumns, columnCount)) return false;
-  if (typeof s.cells !== "object" || s.cells === null) return false;
-  for (const key of Object.keys(s.cells as Record<string, unknown>)) {
+  // Required fields — absence is a contract violation, not a default.
+  if (!isFreeze(s.frozenRows, rowCount) || !isFreeze(s.frozenColumns, columnCount)) return false;
+  if (!isPlainRecord(s.cells)) return false;
+  for (const [key, data] of Object.entries(s.cells as Record<string, unknown>)) {
     if (!isCellKeyInBounds(key, rowCount, columnCount)) return false;
+    if (!isValidCellData(data)) return false;
   }
   if (!isSizeMap(s.rowHeights, rowCount)) return false;
   if (!isSizeMap(s.columnWidths, columnCount)) return false;
   return true;
+}
+
+/** Plain object (not null, not an array). */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isBoundedSize(value: unknown, max: number): boolean {
@@ -101,11 +114,33 @@ function isCellKeyInBounds(key: string, rowCount: number, columnCount: number): 
   return Number(match[1]) < rowCount && Number(match[2]) < columnCount;
 }
 
+const CELL_ERROR_TYPES = new Set(["#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#N/A", "#CYCLE!"]);
+
+/** CellData shape: legal value + optional string metadata. */
+function isValidCellData(value: unknown): boolean {
+  if (!isPlainRecord(value)) return false;
+  const data = value as Record<string, unknown>;
+  if (!isValidCellValue(data.value)) return false;
+  for (const field of ["formula", "styleId", "numberFormat"]) {
+    if (data[field] !== undefined && typeof data[field] !== "string") return false;
+  }
+  return true;
+}
+
+function isValidCellValue(value: unknown): boolean {
+  const primitive = typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null;
+  if (primitive) return true;
+  if (!isPlainRecord(value)) return false;
+  // CellError
+  if (!CELL_ERROR_TYPES.has(String((value as Record<string, unknown>).type))) return false;
+  const message = (value as Record<string, unknown>).message;
+  return message === undefined || typeof message === "string";
+}
+
 /** Index → positive finite size, with valid integer indices inside bounds. */
 function isSizeMap(value: unknown, bound: number): boolean {
-  if (value === undefined) return true;
-  if (typeof value !== "object" || value === null) return false;
-  for (const [index, size] of Object.entries(value as Record<string, unknown>)) {
+  if (!isPlainRecord(value)) return false;
+  for (const [index, size] of Object.entries(value)) {
     if (!/^\d+$/.test(index) || Number(index) >= bound) return false;
     if (typeof size !== "number" || !Number.isFinite(size) || size <= 0) return false;
   }
