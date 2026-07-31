@@ -4,7 +4,7 @@
 
 OpenSheet 独立维护、独立构建、独立发布，不依赖任何专有商业电子表格组件。
 
-> **当前状态：M0（架构与内核骨架）阶段。** 以下标注 *Planned* 的能力尚未实现，以 `docs/architecture.md` 里程碑计划为准。
+> **当前状态：M1（Canvas 渲染内核）已完成，进入 M2。** 以下标注 *Planned* 的能力尚未实现，以 `docs/architecture.md` 里程碑计划为准。
 
 ## 环境要求
 
@@ -100,7 +100,7 @@ docs/              # 架构、数据模型、插件系统、性能报告、ADR
 
 - [x] Monorepo 骨架、构建与测试工具链、依赖边界检查、许可证检查
 - [x] M0：shared 契约、core 数据模型与 Snapshot、Command Bus + 事务、History、plugin-api、runtime 骨架
-- [ ] M1：Canvas 渲染内核（双 Canvas、虚拟化）
+- [x] M1：双 Canvas 渲染内核（前缀和二分定位、虚拟化、冻结四分区、选区与键盘导航、滚动条；实测 2M 单元格滚动绘制 p95=7.1ms）
 - [ ] M2：单元格编辑、剪贴板、行列操作、样式、Undo/Redo UI
 - [ ] M3：公式引擎（28 个基础函数，derived-update 通道）
 - [ ] M4：排序、筛选、查找、去重

@@ -1,6 +1,6 @@
 # OpenSheet 架构
 
-> 当前状态：M0 已完成（内核骨架）。M1–M6 见文末里程碑表。
+> 当前状态：M0、M1 已完成（内核骨架 + Canvas 渲染）。M2–M6 见文末里程碑表。
 
 ## 分层
 
@@ -52,7 +52,7 @@ beginBatch
 | 里程碑 | 内容 | E2E 场景 |
 |---|---|---|
 | M0 ✅ | 骨架、shared、core、commands+事务、history、plugin-api、runtime 骨架、benchmark、ADR | — |
-| M1 | 双 Canvas 渲染内核、虚拟化、冻结、选区、键盘导航 | — |
+| M1 ✅ | 双 Canvas 渲染内核（Content+Overlay）、前缀和二分定位、虚拟化、冻结四分区、选区与键盘导航、滚动条 | — |
 | M2 | DOM 编辑器、剪贴板、行列操作、样式、Undo/Redo UI、Snapshot 持久化 | 1,2,3,5,6,7,12,13,14 |
 | M3 | 公式引擎（28 函数、依赖图、环检测、derived 通道） | 4 |
 | M4 | 排序、筛选、查找、追加行、去重 | 8,9 |

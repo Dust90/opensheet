@@ -1,0 +1,19 @@
+{
+  "date": "2026-07-31T06:48:08.518Z",
+  "browser": "chromium 140 (Playwright 1.55, headless software raster)",
+  "machine": "macOS 13.2.1 x64, Node v22.22.2",
+  "dataset": "100,000 rows x 20 cols = 2,000,000 cells",
+  "load2M": "Loaded 100,000×20 in 646ms",
+  "heapUsedMB": 111,
+  "samples": 110,
+  "paintMs": {
+    "p50": 5.2,
+    "p90": 6.9,
+    "p95": 7.1,
+    "max": 7.5
+  },
+  "paintedCellsPerScrollFrame": {
+    "min": 559,
+    "max": 572
+  }
+}
