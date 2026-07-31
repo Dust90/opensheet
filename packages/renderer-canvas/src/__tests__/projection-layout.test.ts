@@ -5,7 +5,7 @@
 // Scenario: 20 rows × 3 cols, filter range 5..14, visible [5,7,9,12].
 
 import { describe, expect, it } from "vitest";
-import type { CellData, Range } from "@opensheet/shared";
+import { SheetError, type CellData, type Range } from "@opensheet/shared";
 import type { WorksheetView } from "@opensheet/core";
 import { AxisMetrics } from "../axis-metrics.js";
 import { cellRectInCanvas, hitTestCell } from "../coordinate-mapper.js";
@@ -14,10 +14,11 @@ import {
   FilteredRowProjection,
   IdentityRowProjection,
   lastVisiblePhysicalRow,
+  physicalRangeToVisualRange,
   relocateToVisibleRow,
   type RowProjection,
 } from "../row-projection.js";
-import { computeScrollToCell, computeViewport } from "../viewport.js";
+import { clampScroll, computeScrollToCell, computeViewport } from "../viewport.js";
 
 const PHYSICAL = 20;
 const COLS = 3;
@@ -308,6 +309,91 @@ describe("scroll-to-active with projection", () => {
       frozenColCount: 0,
     });
     expect(scrolled.scrollY).toBe(bigRows.positionOf(lastVisual + 1) - (600 - HEADER_H));
+  });
+});
+
+describe("M4.1.1 hardening", () => {
+  it("visualToPhysical throws SheetError when no rows are visible", () => {
+    const empty = new FilteredRowProjection(10, { startRow: 0, endRow: 9 }, []);
+    expect(empty.visualRowCount).toBe(0);
+    expect(() => empty.visualToPhysical(0)).toThrow(SheetError);
+    expect(() => new IdentityRowProjection(0).visualToPhysical(0)).toThrow(SheetError);
+  });
+
+  it("zero-visible-row compositions degrade safely (no -1 coordinates)", () => {
+    const empty = new FilteredRowProjection(10, { startRow: 0, endRow: 9 }, []);
+    expect(lastVisiblePhysicalRow(empty)).toBe(-1);
+    expect(relocateToVisibleRow(empty, 3)).toBeUndefined();
+    expect(physicalRangeToVisualRange({ startRow: 0, startCol: 0, endRow: 9, endCol: 2 }, empty)).toBeNull();
+    // Hit test with an empty axis reports "outside", never a cell.
+    const sheet = fakeSheet();
+    const rows = new AxisMetrics(empty.visualRowCount, 24, () => undefined);
+    const cols = colAxis(sheet);
+    const layout = computeViewport({
+      scrollX: 0, scrollY: 0, width: 800, height: 600, rows, cols,
+      frozenRowCount: 0, frozenColCount: 0, bufferPx: 0,
+      headerWidth: HEADER_W, headerHeight: HEADER_H,
+    });
+    expect(layout.main.rowEnd).toBe(-1); // paint loops no-op
+    const hit = hitTestCell({
+      x: HEADER_W + 5, y: HEADER_H + 5, layout, rows, cols,
+      scrollX: 0, scrollY: 0, headerWidth: HEADER_W, headerHeight: HEADER_H,
+      scrollbarSize: 10, rowCount: rows.length, colCount: COLS,
+    });
+    expect(hit.zone).toBe("outside");
+  });
+
+  it("clampScroll pulls a deep scroll back after the axis shrinks", () => {
+    const sheet = fakeSheet();
+    const cols = colAxis(sheet);
+    // Deep scroll on the full 1000-row axis.
+    const bigRows = new AxisMetrics(1000, 24, () => undefined);
+    const deep = { scrollX: 0, scrollY: bigRows.totalSize - 500 };
+    // Filter hides 90% → axis shrinks to 100 rows.
+    const shrunk = new AxisMetrics(100, 24, () => undefined);
+    const clamped = clampScroll(deep, shrunk, cols, 800 - HEADER_W, 600 - HEADER_H);
+    expect(clamped.scrollY).toBeLessThanOrEqual(Math.max(0, shrunk.totalSize - (600 - HEADER_H)));
+    expect(clamped.scrollY).toBeGreaterThan(0); // still shows the last screen
+  });
+
+  it("cellRectInCanvas: non-frozen cell above the viewport does not crash (no freeze)", () => {
+    const sheet = fakeSheet();
+    const p = new IdentityRowProjection(PHYSICAL);
+    const rows = visualAxis(sheet, p);
+    const cols = colAxis(sheet);
+    // Scrolled deep: main.rowStart = 10; cell row 2 is above the viewport and
+    // NOT frozen — previously misclassified via `cell.row < main.rowStart`.
+    const layout = computeViewport({
+      scrollX: 0, scrollY: 10 * 24, width: 800, height: 600, rows, cols,
+      frozenRowCount: 0, frozenColCount: 0, bufferPx: 0,
+      headerWidth: HEADER_W, headerHeight: HEADER_H,
+    });
+    expect(layout.main.rowStart).toBe(10);
+    expect(layout.top).toBeNull();
+    const rect = cellRectInCanvas({ row: 2, col: 0 }, layout, rows, cols);
+    // Main-quadrant math: 2 is 8 rows above the window → negative offset.
+    expect(rect.y).toBe(layout.main.originY - 8 * 24);
+    expect(rect.height).toBe(24);
+  });
+
+  it("cellRectInCanvas: frozen membership comes from quadrant bounds", () => {
+    const sheet = fakeSheet(1); // physical row 0 frozen
+    const p = new IdentityRowProjection(PHYSICAL);
+    const rows = visualAxis(sheet, p);
+    const cols = colAxis(sheet);
+    const layout = computeViewport({
+      scrollX: 0, scrollY: 10 * 24, width: 800, height: 600, rows, cols,
+      frozenRowCount: p.visibleCountBefore(sheet.frozenRows), frozenColCount: 0, bufferPx: 0,
+      headerWidth: HEADER_W, headerHeight: HEADER_H,
+    });
+    // Frozen row 0 → top strip at the header.
+    expect(cellRectInCanvas({ row: 0, col: 0 }, layout, rows, cols).y).toBe(HEADER_H);
+    // Row 2 is not inside top.rowStart..rowEnd (only row 0 is frozen) — it
+    // resolves against the MAIN quadrant even though it sits above the
+    // scrolled window (offscreen, but quadrant-correct and crash-free).
+    const rect = cellRectInCanvas({ row: 2, col: 0 }, layout, rows, cols);
+    expect(rect.y).toBe(layout.main.originY + rows.positionOf(2) - rows.positionOf(layout.main.rowStart));
+    expect(rect.y).not.toBe(HEADER_H);
   });
 });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatAddress, inferPrimitive, type CellPrimitive } from "@opensheet/shared";
-import { SheetGrid } from "@opensheet/renderer-canvas";
+import { SheetGrid, FilteredRowProjection } from "@opensheet/renderer-canvas";
 import { createOpenSheet, createPersistence, type WorkbookInfo } from "@opensheet/runtime";
 import { cellsToTSV, parseTSV } from "@opensheet/clipboard";
 
@@ -145,11 +145,16 @@ function App() {
     (window as unknown as { __api?: typeof api }).__api = api;
     (window as unknown as { __workbookId?: string }).__workbookId = workbook.id;
     (window as unknown as { __sheetId?: string }).__sheetId = sheetId;
+    // M4.1 E2E probe: let tests install projections without a filter UI.
+    (window as unknown as { __FilteredRowProjection?: typeof FilteredRowProjection }).__FilteredRowProjection =
+      FilteredRowProjection;
     return () => {
       (window as unknown as { __grid?: SheetGrid }).__grid = undefined;
       (window as unknown as { __api?: typeof api }).__api = undefined;
       (window as unknown as { __workbookId?: string }).__workbookId = undefined;
       (window as unknown as { __sheetId?: string }).__sheetId = undefined;
+      (window as unknown as { __FilteredRowProjection?: typeof FilteredRowProjection }).__FilteredRowProjection =
+        undefined;
       gridRef.current = null;
       grid.destroy();
     };

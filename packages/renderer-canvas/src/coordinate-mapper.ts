@@ -159,8 +159,14 @@ export function cellRectInCanvas(
   rows: AxisMetrics,
   cols: AxisMetrics,
 ): { x: number; y: number; width: number; height: number } {
-  const frozenRow = cell.row < layout.main.rowStart;
-  const frozenCol = cell.col < layout.main.colStart;
+  // M4.1.1: frozen membership comes from the frozen QUADRANTS' bounds, not
+  // from main.rowStart/colStart — those are the scrolled window's first
+  // visible indices, so any cell above the viewport was misclassified as
+  // frozen (and crashed on layout.top! when no freeze existed).
+  const frozenRow =
+    layout.top !== null && cell.row >= layout.top.rowStart && cell.row <= layout.top.rowEnd;
+  const frozenCol =
+    layout.left !== null && cell.col >= layout.left.colStart && cell.col <= layout.left.colEnd;
   let q: Quadrant;
   if (frozenRow && frozenCol) q = layout.corner!;
   else if (frozenRow) q = layout.top!;

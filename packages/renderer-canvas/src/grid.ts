@@ -12,7 +12,7 @@ import type {
   ChangeListener,
   Unsubscribe,
 } from "@opensheet/shared";
-import { isCellError } from "@opensheet/shared";
+import { isCellError, SheetError } from "@opensheet/shared";
 import { AxisMetrics } from "./axis-metrics.js";
 import {
   cellRectInCanvas,
@@ -223,10 +223,25 @@ export class SheetGrid {
    * filter is cleared). Rebuilds the visual row axis and applies the
    * hidden-active-cell policy: an active cell that became hidden moves to the
    * next visible physical row so the overlay, F2 and keyboard navigation
-   * always have a visible anchor.
+   * always have a visible anchor — then scrolls it into the viewport.
+   *
+   * Order (M4.1.1): validate → install → rebuild metrics → clamp scroll →
+   * relocate active cell → scroll active into view → sync layout → redraw.
    */
   setRowProjection(projection: RowProjection | null): void {
+    if (projection !== null && projection.physicalRowCount !== this.worksheet.rowCount) {
+      // A projection built for another sheet (or before a structural change)
+      // would map onto out-of-bounds physical rows — reject, never install.
+      throw new SheetError(
+        "E_VALIDATION",
+        `RowProjection physicalRowCount ${projection.physicalRowCount} does not match worksheet rowCount ${this.worksheet.rowCount}`,
+      );
+    }
     this.projection = projection ?? new IdentityRowProjection(this.worksheet.rowCount);
+    this.rebuildMetrics();
+    // The visual axis may have shrunk drastically (e.g. filter hid 90% of
+    // rows): a stale deep scrollY would paint an empty canvas.
+    this.reconcileViewportAfterMetrics();
     const active = this.selection.state.active;
     if (!this.projection.isVisible(active.row)) {
       const relocated = relocateToVisibleRow(this.projection, active.row);
@@ -234,8 +249,10 @@ export class SheetGrid {
         this.selection.setActive({ row: relocated, col: active.col });
       }
     }
-    this.rebuildMetrics();
     this.selection.clampSelection();
+    // "Visible in the projection" is not "visible in the viewport" — reveal
+    // the (possibly relocated) active cell before the next frame.
+    this.scrollActiveIntoView();
     // Refresh layout synchronously: a click before the next rAF must never
     // hit-test against stale frozen geometry (same rule as structure events).
     this.layout = this.computeLayout();
@@ -281,6 +298,9 @@ export class SheetGrid {
     }
     if (this.dirty.needsStructureRebuild) {
       this.rebuildMetrics();
+      // Deleted rows/cols shrink the axes: clamp scroll before any hit test
+      // or paint reads the stale offset (M4.1.1).
+      this.reconcileViewportAfterMetrics();
       // Row/col/sheet structure changed: the active cell may now be out of
       // bounds. SelectionModel re-clamps on next set; force it now so the
       // overlay does not paint a stale out-of-range selection.
@@ -318,8 +338,28 @@ export class SheetGrid {
       canvas.height = Math.max(1, Math.round(rect.height * ratio));
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     }
+    // A larger viewport shrinks maxScroll (totalSize - viewport): re-clamp so
+    // the scroll offset never points past the content (M4.1.1).
+    this.reconcileViewportAfterMetrics();
     this.dirty.markFullRedraw();
     this.scheduleFrame();
+  }
+
+  /**
+   * Re-clamp the current scroll offset against the CURRENT axis sizes and
+   * viewport. Must run after every metrics rebuild or resize — unlike
+   * setScroll it does not schedule a frame (callers handle invalidation).
+   */
+  private reconcileViewportAfterMetrics(): void {
+    const clamped = clampScroll(
+      { scrollX: this.scrollX, scrollY: this.scrollY },
+      this.rows,
+      this.cols,
+      this.contentWidth() - this.headerWidth,
+      this.contentHeight() - this.headerHeight,
+    );
+    this.scrollX = clamped.scrollX;
+    this.scrollY = clamped.scrollY;
   }
 
   // --- scrolling ------------------------------------------------------------
@@ -968,15 +1008,20 @@ export class SheetGrid {
       case "Home":
         if (meta) {
           // Ctrl+Home: first VISIBLE physical row (identity → row 0).
-          const firstVisible = this.projection.visualRowCount > 0 ? this.projection.visualToPhysical(0) : 0;
-          this.selection.jumpTo({ row: firstVisible, col: 0 }, shift);
+          if (this.projection.visualRowCount > 0) {
+            this.selection.jumpTo({ row: this.projection.visualToPhysical(0), col: 0 }, shift);
+          }
         } else this.selection.jumpTo({ row: this.selection.state.active.row, col: 0 }, shift);
         break;
       case "End":
         if (meta) {
           // Ctrl+End: last VISIBLE physical row, not the sheet's last row.
-          const lastRow = lastVisiblePhysicalRow(this.projection);
-          this.selection.jumpTo({ row: Math.max(0, lastRow), col: this.worksheet.columnCount - 1 }, shift);
+          if (this.projection.visualRowCount > 0) {
+            this.selection.jumpTo(
+              { row: lastVisiblePhysicalRow(this.projection), col: this.worksheet.columnCount - 1 },
+              shift,
+            );
+          }
         } else
           this.selection.jumpTo(
             { row: this.selection.state.active.row, col: this.worksheet.columnCount - 1 },

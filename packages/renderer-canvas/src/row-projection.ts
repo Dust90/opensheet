@@ -15,7 +15,8 @@ export interface RowProjection {
   readonly physicalRowCount: number;
   readonly visualRowCount: number;
 
-  /** Visual row → physical row. Input is clamped into [0, visualRowCount-1]. */
+  /** Visual row → physical row. Input is clamped into [0, visualRowCount-1].
+   *  Throws SheetError when visualRowCount === 0 (never fabricates -1). */
   visualToPhysical(visualRow: number): number;
 
   /** Physical row → visual row, or undefined when the row is hidden. */
@@ -47,6 +48,12 @@ export class IdentityRowProjection implements RowProjection {
   }
 
   visualToPhysical(visualRow: number): number {
+    if (this.visualRowCount === 0) {
+      throw new SheetError(
+        "E_VALIDATION",
+        "IdentityRowProjection: no visible rows — check visualRowCount before mapping",
+      );
+    }
     return Math.min(Math.max(0, visualRow), this.visualRowCount - 1);
   }
 
@@ -141,6 +148,14 @@ export class FilteredRowProjection implements RowProjection {
   }
 
   visualToPhysical(visualRow: number): number {
+    // Zero-visible-row lock (M4.1.1): never fabricate a coordinate (the old
+    // clamp produced -1). Callers must check visualRowCount first.
+    if (this.visualRowCount === 0) {
+      throw new SheetError(
+        "E_VALIDATION",
+        "FilteredRowProjection: no visible rows — check visualRowCount before mapping",
+      );
+    }
     const clamped = Math.min(Math.max(0, visualRow), this.visualRowCount - 1);
     if (clamped < this.startRow) return clamped;
     const offset = clamped - this.startRow;
