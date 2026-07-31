@@ -132,10 +132,12 @@ export function createDefaultFunctions(): FunctionRegistry {
         if (v === null || typeof v === "boolean") continue;
         const n = typeof v === "string" ? Number(v) : v;
         if (Number.isNaN(n)) continue;
+        // Reject non-finite conversions (e.g. "-1e309" string) with #NUM!.
+        if (!Number.isFinite(n)) return { type: "#NUM!", message: "Numeric value is out of range" };
         if (min === null || n < min) min = n;
       }
     }
-    return min === null ? 0 : min;
+    return min === null ? 0 : finiteNumber(min);
   });
 
   registry.register("MAX", (args) => {
@@ -146,10 +148,12 @@ export function createDefaultFunctions(): FunctionRegistry {
         if (v === null || typeof v === "boolean") continue;
         const n = typeof v === "string" ? Number(v) : v;
         if (Number.isNaN(n)) continue;
+        // Reject non-finite conversions (e.g. "1e309" string) with #NUM!.
+        if (!Number.isFinite(n)) return { type: "#NUM!", message: "Numeric value is out of range" };
         if (max === null || n > max) max = n;
       }
     }
-    return max === null ? 0 : max;
+    return max === null ? 0 : finiteNumber(max);
   });
 
   registry.register("COUNT", (args) => {

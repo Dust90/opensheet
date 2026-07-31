@@ -156,4 +156,69 @@ describe("M3.5 formula reference rewriting", () => {
     const cmp = parseFormula("=(A1=B1)=TRUE");
     expect(JSON.stringify(parseFormula(`=${exprToString(cmp.ast)}`).ast)).toBe(JSON.stringify(cmp.ast));
   });
+
+  it("M3.7: addition and multiplication grouping preserved (IEEE-754 non-associativity)", () => {
+    // 1e16+(-1e16+1): the RIGHT child (-1e16+1) must keep its grouping so that
+    // re-parsing yields an identical AST (same tree structure, same evaluation order).
+    // Note: String(1e16) in JS is "10000000000000000", so we test AST equality not string form.
+    const add = parseFormula("=1e16+(-1e16+1)");
+    // The serialized form must round-trip back to the same AST.
+    expect(JSON.stringify(parseFormula(`=${exprToString(add.ast)}`).ast)).toBe(JSON.stringify(add.ast));
+    // Verify the right child is still a parenthesized group (unary minus wrapping a binary).
+    const addStr = exprToString(add.ast);
+    expect(addStr).toContain("(");  // right-child grouping must be preserved
+
+    // 1e308*(1e-308*1e-308) — multiplication grouping.
+    const mul = parseFormula("=1e308*(1e-308*1e-308)");
+    expect(JSON.stringify(parseFormula(`=${exprToString(mul.ast)}`).ast)).toBe(JSON.stringify(mul.ast));
+    const mulStr = exprToString(mul.ast);
+    expect(mulStr).toContain("(");  // right child grouping preserved
+
+    // String concat: "a"&("b"&"c") — must keep grouping (& is left-assoc).
+    const cat = parseFormula('="a"&("b"&"c")');
+    expect(exprToString(cat.ast)).toBe('"a"&("b"&"c")');
+    expect(JSON.stringify(parseFormula(`=${exprToString(cat.ast)}`).ast)).toBe(JSON.stringify(cat.ast));
+
+    // AST round-trip property: left-assoc right-grouping — the parsed re-serialized
+    // AST must be structurally identical to the original.
+    for (const formula of [
+      "=A1+(B1+C1)",
+      "=A1*(B1*C1)",
+      '=A1&(B1&C1)',
+      "=10-(3-1)",
+      "=8/(4/2)",
+      "=2^3^2",
+    ]) {
+      const { ast } = parseFormula(formula);
+      const serialized = exprToString(ast);
+      const roundTripped = parseFormula(`=${serialized}`).ast;
+      // Structural equality: re-parsing the serialized form must yield the same AST.
+      expect(JSON.stringify(roundTripped)).toBe(JSON.stringify(ast));
+    }
+  });
+});
+
+// ── M3.7 Fix 1: MIN/MAX finite guard ───────────────────────────────────────
+
+describe("M3.7 Fix 1: MIN/MAX finite guard", () => {
+  it("MAX of Infinity-producing string → #NUM!", () => {
+    expect(evalWithBudget("=MAX(\"1e309\")", { maxCellReads: 100 })).toMatchObject({ type: "#NUM!" });
+  });
+
+  it("MIN of -Infinity-producing string → #NUM!", () => {
+    expect(evalWithBudget("=MIN(\"-1e309\")", { maxCellReads: 100 })).toMatchObject({ type: "#NUM!" });
+  });
+
+  it("MAX of finite number is unchanged", () => {
+    expect(evalWithBudget("=MAX(1e308)", { maxCellReads: 100 })).toBe(1e308);
+  });
+
+  it("MIN of finite number is unchanged", () => {
+    expect(evalWithBudget("=MIN(-1e308)", { maxCellReads: 100 })).toBe(-1e308);
+  });
+
+  it("MAX with mix of normal values still works", () => {
+    expect(evalWithBudget("=MAX(1,2,3)", { maxCellReads: 100 })).toBe(3);
+    expect(evalWithBudget("=MIN(1,2,3)", { maxCellReads: 100 })).toBe(1);
+  });
 });

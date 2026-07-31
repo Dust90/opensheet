@@ -104,16 +104,17 @@ const PRECEDENCE: Record<string, number> = {
 };
 
 /**
- * True for operators that are left-associative BUT NOT commutative on the
- * right side. For these, the right child at equal precedence MUST keep parens:
- *   10-(3-1) ≠ 10-3-1   (subtraction)
- *   8/(4/2)  ≠ 8/4/2    (division)
- *   a<(b<c) differs from a<b<c (comparison chaining is rare but must be safe)
- * `+` and `*` are truly commutative/associative — no bump needed.
- * `^` is right-associative — handled separately.
+ * True for ALL left-associative binary operators. In IEEE 754 floating-point,
+ * even addition and multiplication are NOT truly associative
+ * (e.g. 1e16+(-1e16+1) ≠ 1e16+(-1e16)+1), so the right child at EQUAL
+ * precedence must always keep its parentheses to guarantee AST round-trip
+ * fidelity after any structural rewrite.
+ *
+ * `^` is right-associative and is handled separately via the side=="left" check.
  */
-function isLeftAssocNonCommutative(op: string): boolean {
-  return op === "-" || op === "/" || op === "=" || op === "<>" || op === "<" || op === ">" || op === "<=" || op === ">=";
+function isLeftAssoc(op: string): boolean {
+  // Every binary operator in PRECEDENCE is left-associative except `^`.
+  return op !== "^" && op in PRECEDENCE;
 }
 
 function precOf(node: Expr): number {
@@ -163,11 +164,12 @@ function rawToString(node: Expr): string {
     case "binary": {
       const prec = PRECEDENCE[node.op] ?? 0;
       const left = exprNodeToString(node.left, prec, "left");
-      // For left-associative non-commutative operators (-, /, comparisons) the
-      // right child at equal precedence must keep its parentheses.  We simulate
-      // this by bumping the effective parent precedence by 0.5, which is less
-      // than any integer step in PRECEDENCE but still greater than `prec`.
-      const rightPrec = isLeftAssocNonCommutative(node.op) ? prec + 0.5 : prec;
+      // For ALL left-associative operators the right child at equal precedence
+      // must keep its parentheses, even for + and * — IEEE 754 floating-point
+      // is NOT truly associative (1e16+(-1e16+1) ≠ 1e16+(-1e16)+1). The 0.5
+      // bump is smaller than any integer step in PRECEDENCE, so it only
+      // triggers when ownPrec === prec (equal-precedence same-level grouping).
+      const rightPrec = isLeftAssoc(node.op) ? prec + 0.5 : prec;
       const right = exprNodeToString(node.right, rightPrec, "right");
       return `${left}${node.op}${right}`;
     }
