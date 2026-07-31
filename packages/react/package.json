@@ -21,5 +21,11 @@
   "peerDependencies": {
     "react": ">=18 <20",
     "react-dom": ">=18 <20"
+  },
+  "dependencies": {
+    "@opensheet/shared": "workspace:*",
+    "@opensheet/renderer-canvas": "workspace:*",
+    "@opensheet/plugin-api": "workspace:*",
+    "@opensheet/runtime": "workspace:*"
   }
 }

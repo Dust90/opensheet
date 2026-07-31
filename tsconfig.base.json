@@ -18,6 +18,19 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@opensheet/shared": ["./packages/shared/src/index.ts"],
+      "@opensheet/core": ["./packages/core/src/index.ts"],
+      "@opensheet/commands": ["./packages/commands/src/index.ts"],
+      "@opensheet/history": ["./packages/history/src/index.ts"],
+      "@opensheet/formula-engine": ["./packages/formula-engine/src/index.ts"],
+      "@opensheet/clipboard": ["./packages/clipboard/src/index.ts"],
+      "@opensheet/import-export": ["./packages/import-export/src/index.ts"],
+      "@opensheet/plugin-api": ["./packages/plugin-api/src/index.ts"],
+      "@opensheet/renderer-canvas": ["./packages/renderer-canvas/src/index.ts"],
+      "@opensheet/react": ["./packages/react/src/index.ts"],
+      "@opensheet/runtime": ["./packages/runtime/src/index.ts"]
+    }
   }
 }

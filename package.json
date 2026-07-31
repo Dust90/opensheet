@@ -1,8 +1,12 @@
 {
   "name": "opensheet",
   "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "description": "A standalone high-performance web spreadsheet engine",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dust90/opensheet.git"
+  },
+  "packageManager": "pnpm@11.18.0",
   "scripts": {
     "dev": "pnpm --filter @opensheet/demo dev",
     "build": "pnpm -r run build",
@@ -11,19 +15,20 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "bench:cell-store": "node scripts/bench-cell-store.mjs",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "^11.18.0",
-      "onFail": "download"
-    }
-  },
+  "keywords": [
+    "spreadsheet",
+    "canvas",
+    "grid",
+    "typescript"
+  ],
+  "author": "OpenSheet Contributors",
+  "license": "MIT",
   "type": "module",
   "private": true,
   "engines": {
@@ -33,9 +38,11 @@
     "@playwright/test": "^1.50.0",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",
+    "fast-check": "^4.1.1",
     "prettier": "^3.9.6",
     "tsup": "^8.5.1",
     "typescript": "~6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "^2.8.0"
   }
 }

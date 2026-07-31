@@ -1,0 +1,189 @@
+// CommandBus: registry + transactions with inverse patch journal and
+// buffered events (ADR-0003).
+
+import type { Workbook } from "@opensheet/core";
+import { isSheetError, type ChangeSource } from "@opensheet/shared";
+import { ApplyOperationsError, type ApplyOperationsResult } from "./operations.js";
+import { CommandRegistry } from "./registry.js";
+import type {
+  BeforeCommitHook,
+  CommandContext,
+  HistorySink,
+  JournalBatch,
+  JournalEntry,
+} from "./types.js";
+
+export interface OperationEnvelope {
+  type: string;
+  payload: unknown;
+}
+
+export interface CommandBusOptions {
+  history?: HistorySink;
+  registry?: CommandRegistry;
+}
+
+/**
+ * One bus per workbook. All mutations flow through here; the bus owns
+ * transaction semantics:
+ *
+ *   beginBatch → execute commands (events buffered, no recalc, no hooks)
+ *   success → beforeCommit hooks (formula recalc lands here, derived events
+ *             merge into the same buffer) → endBatch(true): exactly one
+ *             merged event per sheet → ONE history entry
+ *   failure → reverse-replay journal → endBatch(false): buffer discarded,
+ *             no history, observers never saw intermediate state
+ */
+export class CommandBus {
+  readonly registry: CommandRegistry;
+  private readonly workbook: Workbook;
+  private readonly history: HistorySink | undefined;
+  private readonly beforeCommitHooks: BeforeCommitHook[] = [];
+
+  constructor(workbook: Workbook, options?: CommandBusOptions) {
+    this.workbook = workbook;
+    this.history = options?.history;
+    this.registry = options?.registry ?? new CommandRegistry();
+  }
+
+  addBeforeCommitHook(hook: BeforeCommitHook): () => void {
+    this.beforeCommitHooks.push(hook);
+    return () => {
+      const i = this.beforeCommitHooks.indexOf(hook);
+      if (i >= 0) this.beforeCommitHooks.splice(i, 1);
+    };
+  }
+
+  /** Execute one command as an implicit single-command transaction. */
+  execute<TResult = void>(
+    type: string,
+    payload: unknown,
+    options: { sheetId?: string; source?: ChangeSource } = {},
+  ): TResult {
+    const { results } = this.runTransaction(
+      [{ type, payload }],
+      options.sheetId ?? this.workbook.activeSheetId,
+      options.source ?? "user",
+    );
+    return results[0] as TResult;
+  }
+
+  /** applyOperations entry point. */
+  applyOperations(init: {
+    sheetId: string;
+    operations: ReadonlyArray<{ type: string; [key: string]: unknown }>;
+    atomic?: boolean;
+    source?: ChangeSource;
+  }): ApplyOperationsResult {
+    const operationId = crypto.randomUUID();
+    const source = init.source ?? "api";
+    const ops = init.operations.map(({ type, ...payload }) => ({ type, payload }));
+    const atomic = init.atomic ?? false;
+
+    let affectedCells = 0;
+    try {
+      if (atomic) {
+        const { affected } = this.runTransaction(ops, init.sheetId, source);
+        affectedCells = affected;
+      } else {
+        for (let i = 0; i < ops.length; i++) {
+          try {
+            const { affected } = this.runTransaction([ops[i]!], init.sheetId, source);
+            affectedCells += affected;
+          } catch (error) {
+            if (error instanceof Error) {
+              (error as { __failedIndex?: number }).__failedIndex = i;
+            }
+            throw error;
+          }
+        }
+      }
+    } catch (error) {
+      const failedIndex = (error as { __failedIndex?: number }).__failedIndex ?? 0;
+      throw new ApplyOperationsError({
+        operationId,
+        failedOperationIndex: failedIndex,
+        errorCode: isSheetError(error) ? error.code : "E_OP_FAILED",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+    return { operationId, status: "completed", affectedCells, warnings: [] };
+  }
+
+  /**
+   * Replay a journal batch (used by history undo/redo). Runs inside the
+   * same transaction boundary so observers see a single merged event.
+   */
+  replayJournal(batch: JournalBatch, direction: "undo" | "redo"): void {
+    const source: ChangeSource = direction === "undo" ? "undo" : "redo";
+    this.workbook.beginBatch();
+    try {
+      const ctx = { workbook: this.workbook, source };
+      const entries = direction === "undo" ? [...batch.entries].reverse() : batch.entries;
+      for (const entry of entries) {
+        if (direction === "undo") entry.undo(ctx);
+        else entry.redo(ctx);
+      }
+      this.runBeforeCommitHooks(source);
+      this.workbook.endBatch(true);
+    } catch (error) {
+      this.workbook.endBatch(false);
+      throw error;
+    }
+  }
+
+  private runTransaction(
+    ops: readonly OperationEnvelope[],
+    sheetId: string,
+    source: ChangeSource,
+  ): { results: unknown[]; affected: number } {
+    const journal: JournalEntry[] = [];
+    const results: unknown[] = [];
+    let affected = 0;
+    let index = -1;
+    this.workbook.beginBatch();
+    try {
+      for (index = 0; index < ops.length; index++) {
+        const op = ops[index]!;
+        const command = this.registry.get(op.type);
+        const ctx: CommandContext = { workbook: this.workbook, sheetId, source };
+        command.validate?.(op.payload, ctx);
+        const outcome = command.execute(ctx, op.payload);
+        journal.push(outcome.journal);
+        results.push(outcome.result);
+        affected += outcome.journal.affected.reduce(
+          (sum, a) => sum + (a.range.endRow - a.range.startRow + 1) * (a.range.endCol - a.range.startCol + 1),
+          0,
+        );
+      }
+      this.runBeforeCommitHooks(source);
+      this.workbook.endBatch(true);
+    } catch (error) {
+      // Reverse-replay journal inside the still-open batch; buffered events
+      // from both the partial execution and the rollback are discarded.
+      const replayCtx = { workbook: this.workbook, source };
+      for (let i = journal.length - 1; i >= 0; i--) {
+        journal[i]!.undo(replayCtx);
+      }
+      this.workbook.endBatch(false);
+      if (error instanceof Error) {
+        (error as { __failedIndex?: number }).__failedIndex = Math.max(index, 0);
+      }
+      throw error;
+    }
+    if (journal.length > 0 && source !== "derived") {
+      this.history?.push({
+        entries: journal,
+        source,
+        approxBytes: journal.reduce((sum, j) => sum + j.approxBytes, 0),
+      });
+    }
+    return { results, affected };
+  }
+
+  private runBeforeCommitHooks(source: ChangeSource): void {
+    for (const hook of this.beforeCommitHooks) {
+      hook({ workbook: this.workbook, source });
+    }
+  }
+}

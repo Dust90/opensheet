@@ -1,0 +1,28 @@
+{
+  "name": "@opensheet/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opensheet/commands": "workspace:*",
+    "@opensheet/core": "workspace:*",
+    "@opensheet/history": "workspace:*",
+    "@opensheet/plugin-api": "workspace:*",
+    "@opensheet/shared": "workspace:*"
+  }
+}

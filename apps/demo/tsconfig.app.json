@@ -15,6 +15,14 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    "paths": {
+      "@opensheet/shared": ["../../packages/shared/src/index.ts"],
+      "@opensheet/core": ["../../packages/core/src/index.ts"],
+      "@opensheet/commands": ["../../packages/commands/src/index.ts"],
+      "@opensheet/history": ["../../packages/history/src/index.ts"],
+      "@opensheet/plugin-api": ["../../packages/plugin-api/src/index.ts"],
+      "@opensheet/runtime": ["../../packages/runtime/src/index.ts"]
+    },
 
     /* Linting */
     "noUnusedLocals": true,

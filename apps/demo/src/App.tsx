@@ -1,122 +1,85 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useMemo, useState } from "react";
+import { createOpenSheet, type WorkbookInfo } from "@opensheet/runtime";
 
+/**
+ * M0 demo: proves the runtime pipeline end-to-end in a browser —
+ * createWorkbook → applyOperations (transaction) → readRange → undo/redo.
+ * The real Canvas grid lands in M1; this is a minimal DOM table.
+ */
 function App() {
-  const [count, setCount] = useState(0)
+  const api = useMemo(() => createOpenSheet(), []);
+  const [workbook] = useState<WorkbookInfo>(() =>
+    api.createWorkbook({ name: "M0 Smoke Book" }),
+  );
+  const [version, setVersion] = useState(0);
+
+  const sheetId = workbook.activeSheetId;
+  const values = api.readRange({ sheetId, range: "A1:E8" });
+
+  const writeSample = async () => {
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId,
+      atomic: true,
+      operations: [
+        { type: "range.write", range: "A1:C1", values: [["Item", "Qty", "Price"]] },
+        { type: "range.write", range: "A2:C3", values: [["Apples", 12, 3.5], ["Pears", 7, 4.2]] },
+      ],
+    });
+    setVersion((v) => v + 1);
+  };
+
+  const undo = () => {
+    api.undo();
+    setVersion((v) => v + 1);
+  };
+
+  const redo = () => {
+    api.redo();
+    setVersion((v) => v + 1);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
+    <main style={{ fontFamily: "system-ui, sans-serif", padding: 24 }}>
+      <h1>OpenSheet — M0 kernel smoke test</h1>
+      <p>
+        Workbook: <strong>{workbook.name}</strong> ({workbook.id.slice(0, 8)}…) · v{version}
+      </p>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button type="button" onClick={writeSample}>
+          Write sample (atomic)
         </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
+        <button type="button" onClick={undo}>
+          Undo
+        </button>
+        <button type="button" onClick={redo}>
+          Redo
+        </button>
+      </div>
+      <table style={{ borderCollapse: "collapse" }}>
+        <tbody>
+          {values.map((row, r) => (
+            <tr key={r}>
+              {row.map((cell, c) => (
+                <td
+                  key={c}
+                  style={{
+                    border: "1px solid #d0d0d0",
+                    minWidth: 90,
+                    height: 26,
+                    padding: "0 8px",
+                    fontSize: 13,
+                  }}
                 >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+                  {cell === null ? "" : String(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </main>
+  );
 }
 
-export default App
+export default App;
