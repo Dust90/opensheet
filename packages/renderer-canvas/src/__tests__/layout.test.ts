@@ -178,9 +178,67 @@ describe("computeScrollToCell / clampScroll", () => {
 
   it("clampScroll limits to content extent", () => {
     const { rows, cols } = makeAxes();
-    const clamped = clampScroll({ scrollX: 999999, scrollY: -5 }, rows, cols, 752, 574, 0, 0);
+    const clamped = clampScroll({ scrollX: 999999, scrollY: -5 }, rows, cols, 752, 574);
     expect(clamped.scrollY).toBe(0);
     expect(clamped.scrollX).toBe(cols.totalSize - 752);
+  });
+
+  it("clampScroll max matches scrollbar geometry max under freeze", () => {
+    const { rows, cols } = makeAxes();
+    const layout = computeViewport(
+      viewportInput(rows, cols, { frozenRowCount: 1, frozenColCount: 1 }),
+    );
+    const geo = computeScrollbarGeometry({
+      layout,
+      rows,
+      cols,
+      scrollX: 0,
+      scrollY: 0,
+      width: 800,
+      height: 600,
+      headerWidth: 48,
+      headerHeight: 26,
+      scrollbarSize: 10,
+    });
+    // Same viewport semantics as SheetGrid.setScroll: header-exclusive size.
+    const clamped = clampScroll(
+      { scrollX: Number.MAX_SAFE_INTEGER, scrollY: Number.MAX_SAFE_INTEGER },
+      rows,
+      cols,
+      800 - 48,
+      600 - 26,
+    );
+    expect(clamped.scrollX).toBe(geo.horizontal!.maxScroll);
+    expect(clamped.scrollY).toBe(geo.vertical!.maxScroll);
+  });
+
+  it("computeScrollToCell + clampScroll makes the last cell fully visible", () => {
+    const { rows, cols } = makeAxes();
+    const frozen = { frozenRowCount: 1, frozenColCount: 1 };
+    const viewportWidth = 800 - 48;
+    const viewportHeight = 600 - 26;
+    const last = { row: ROWS - 1, col: COLS - 1 };
+
+    const target = computeScrollToCell(last, { scrollX: 0, scrollY: 0 }, {
+      viewportWidth,
+      viewportHeight,
+      rows,
+      cols,
+      ...frozen,
+    });
+    const clamped = clampScroll(target, rows, cols, viewportWidth, viewportHeight);
+    const layout = computeViewport(
+      viewportInput(rows, cols, { scrollX: clamped.scrollX, scrollY: clamped.scrollY, ...frozen }),
+    );
+
+    // Last cell's right/bottom edges must land inside the main window.
+    const cellRight = cols.positionOf(last.col + 1) - layout.frozenWidth - clamped.scrollX;
+    const cellBottom = rows.positionOf(last.row + 1) - layout.frozenHeight - clamped.scrollY;
+    expect(cellRight).toBeLessThanOrEqual(layout.mainWidth);
+    expect(cellBottom).toBeLessThanOrEqual(layout.mainHeight);
+    // And the main quadrant must actually include the last cell.
+    expect(layout.main.rowEnd).toBe(ROWS - 1);
+    expect(layout.main.colEnd).toBe(COLS - 1);
   });
 
   it("scrollbar geometry excludes the frozen zone from extents", () => {

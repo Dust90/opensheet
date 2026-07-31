@@ -34,7 +34,19 @@ function App() {
         (window as unknown as { __frameStats: { paintMs: number; full: boolean; paintedCells: number }[] }).__frameStats.push(stats);
       },
     });
-    return () => grid.destroy();
+    // Test probes (E2E): expose the grid + api so tests can trigger combined
+    // data+selection frames and sample painted pixels.
+    (window as unknown as { __grid?: SheetGrid }).__grid = grid;
+    (window as unknown as { __api?: typeof api }).__api = api;
+    (window as unknown as { __workbookId?: string }).__workbookId = workbook.id;
+    (window as unknown as { __sheetId?: string }).__sheetId = sheetId;
+    return () => {
+      (window as unknown as { __grid?: SheetGrid }).__grid = undefined;
+      (window as unknown as { __api?: typeof api }).__api = undefined;
+      (window as unknown as { __workbookId?: string }).__workbookId = undefined;
+      (window as unknown as { __sheetId?: string }).__sheetId = undefined;
+      grid.destroy();
+    };
   }, [api, sheetId]);
 
   const reportError = (error: unknown) => {

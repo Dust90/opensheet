@@ -92,4 +92,86 @@ test.describe("M1 grid", () => {
 
     expect(errors).toEqual([]);
   });
+
+  test("M1.10: Ctrl+End under freeze reaches the true last scroll position", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+
+    await page.goto("/");
+    const grid = page.locator("[data-testid=sheet-grid]");
+    await expect(grid).toBeVisible();
+
+    await page.getByRole("button", { name: "Freeze row 1 + col A" }).click();
+    await expect(page.getByRole("button", { name: "Unfreeze" })).toBeVisible();
+
+    // Ctrl+End on the default 1000x26 sheet (row height 26 → total 26000).
+    await grid.click();
+    await page.keyboard.press("Control+End");
+    await expect(page.getByText(/Active: Z1000/)).toBeVisible();
+
+    // The renderer's scroll position must equal the scrollbar's true max.
+    // Before M1.10 clampScroll double-subtracted the frozen size, leaving the
+    // last frozen-row height (26px) unreachable (maxScroll - 26).
+    const probe = await page.evaluate(() => {
+      const g = (window as unknown as { __grid: { scrollY: number; scrollbarGeometry(): { vertical: { maxScroll: number } | null } } }).__grid;
+      return { scrollY: g.scrollY, maxScroll: g.scrollbarGeometry().vertical!.maxScroll };
+    });
+    expect(probe.scrollY).toBeCloseTo(probe.maxScroll, 5);
+
+    expect(errors).toEqual([]);
+  });
+
+  test("M1.10: same-frame cell dirty + selection move repaints header highlight", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(String(error)));
+
+    await page.goto("/");
+    const grid = page.locator("[data-testid=sheet-grid]");
+    await expect(grid).toBeVisible();
+
+    // Step 1: click C5 → header highlight paints on the C column (own frame).
+    // clientX/Y are viewport-relative, so offset by the canvas rect.
+    await page.evaluate(() => {
+      const overlay = document.querySelectorAll<HTMLCanvasElement>("[data-testid=sheet-grid] canvas")[1];
+      const rect = overlay.getBoundingClientRect();
+      overlay.dispatchEvent(
+        new MouseEvent("mousedown", { clientX: rect.left + 48 + 2 * 100 + 50, clientY: rect.top + 26 + 4 * 26 + 13, button: 0, bubbles: true }),
+      );
+    });
+    await page.waitForTimeout(80);
+    await expect(page.getByText(/Active: C5/)).toBeVisible();
+
+    // Step 2: in ONE synchronous evaluate — move the selection to D5 (headerDirty
+    // + schedules a frame) then immediately write data (dirty rects + schedules
+    // the same frame). Both land in the same rAF: the old else-if chain painted
+    // only the dirty rects and dropped the header repaint.
+    await page.evaluate(async () => {
+      const overlay = document.querySelectorAll<HTMLCanvasElement>("[data-testid=sheet-grid] canvas")[1];
+      const rect = overlay.getBoundingClientRect();
+      overlay.dispatchEvent(
+        new MouseEvent("mousedown", { clientX: rect.left + 48 + 3 * 100 + 50, clientY: rect.top + 26 + 4 * 26 + 13, button: 0, bubbles: true }),
+      );
+      const api = (window as unknown as { __api: { applyOperations(o: object): Promise<unknown> } }).__api;
+      await api.applyOperations({
+        workbookId: (window as unknown as { __workbookId: string }).__workbookId,
+        sheetId: (window as unknown as { __sheetId: string }).__sheetId,
+        atomic: true,
+        operations: [{ type: "range.write", range: "A5:B5", values: [["x", 1]] }],
+      });
+    });
+    await page.waitForTimeout(80);
+    await expect(page.getByText(/Active: D5/)).toBeVisible();
+
+    // D column header pixel must now be the highlight color (211,227,253),
+    // not the plain background (247,248,250) it had while C was selected.
+    const sample = await page.evaluate(() => {
+      const content = document.querySelectorAll<HTMLCanvasElement>("[data-testid=sheet-grid] canvas")[0];
+      const dpr = window.devicePixelRatio || 1;
+      const px = content.getContext("2d")!.getImageData(Math.round(398 * dpr), Math.round(13 * dpr), 1, 1).data;
+      return { r: px[0], g: px[1], b: px[2] };
+    });
+    expect(Math.abs(sample.r - 211) + Math.abs(sample.g - 227) + Math.abs(sample.b - 253)).toBeLessThan(30);
+
+    expect(errors).toEqual([]);
+  });
 });

@@ -42,6 +42,9 @@ test("grid perf: 2M-cell sheet scroll paint", async ({ page }) => {
   );
   const warmup = all.slice(0, WARMUP_FRAMES);
   const measured = all.slice(WARMUP_FRAMES);
+  // Guard against browser frame coalescing silently shrinking the sample set.
+  expect(warmup).toHaveLength(WARMUP_FRAMES);
+  expect(measured).toHaveLength(MEASURED_FRAMES);
   const paints = measured.map((f) => f.paintMs).sort((a, b) => a - b);
   const quantile = (q: number) =>
     paints[Math.min(paints.length - 1, Math.floor(paints.length * q))] ?? 0;

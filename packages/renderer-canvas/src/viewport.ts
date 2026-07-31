@@ -197,6 +197,8 @@ export function computeScrollToCell(
     else if (cellEnd > scrollY + viewHeight) scrollY = cellEnd - viewHeight;
   }
 
+  // viewWidth/viewHeight already exclude the frozen zone, so:
+  //   maxScroll = (totalSize - frozen) - view = totalSize - viewportSize.
   const maxScrollX = Math.max(0, cols.totalSize - frozenWidth - viewWidth);
   const maxScrollY = Math.max(0, rows.totalSize - frozenHeight - viewHeight);
   return {
@@ -205,18 +207,29 @@ export function computeScrollToCell(
   };
 }
 
-/** Clamp scroll into valid range. viewportWidth/Height exclude headers. */
+/**
+ * Clamp scroll into valid range.
+ *
+ * viewportWidth/Height are the header-exclusive canvas size (i.e. they still
+ * INCLUDE the frozen zone). Scroll is relative to the non-frozen area, so:
+ *
+ *   scrollable content = totalSize - frozenSize
+ *   main window        = viewportSize - frozenSize
+ *   maxScroll          = scrollable content - main window
+ *                      = totalSize - viewportSize        (frozen cancels out)
+ *
+ * This must stay consistent with computeScrollbarGeometry().maxScroll, which
+ * computes (totalSize - frozen) - (viewport - frozen) = totalSize - viewport.
+ */
 export function clampScroll(
   scroll: ScrollPosition,
   rows: AxisMetrics,
   cols: AxisMetrics,
   viewportWidth: number,
   viewportHeight: number,
-  frozenWidth: number,
-  frozenHeight: number,
 ): ScrollPosition {
-  const maxScrollX = Math.max(0, cols.totalSize - frozenWidth - viewportWidth);
-  const maxScrollY = Math.max(0, rows.totalSize - frozenHeight - viewportHeight);
+  const maxScrollX = Math.max(0, cols.totalSize - viewportWidth);
+  const maxScrollY = Math.max(0, rows.totalSize - viewportHeight);
   return {
     scrollX: Math.min(Math.max(0, scroll.scrollX), maxScrollX),
     scrollY: Math.min(Math.max(0, scroll.scrollY), maxScrollY),

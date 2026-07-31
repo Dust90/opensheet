@@ -79,6 +79,7 @@ export class SheetGrid {
   private readonly containerTabIndex: number;
   private readonly containerOutline: string;
   private readonly handleWheelBound: (e: WheelEvent) => void;
+  private readonly handleMouseDownBound: (e: MouseEvent) => void;
   private readonly handleMouseMoveBound: (e: MouseEvent) => void;
   private readonly handleMouseUpBound: () => void;
   private readonly handleKeyDownBound: (e: KeyboardEvent) => void;
@@ -149,6 +150,7 @@ export class SheetGrid {
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
     this.handleWheelBound = (e) => this.onWheel(e);
+    this.handleMouseDownBound = (e) => this.onMouseDown(e);
     this.handleMouseMoveBound = (e) => this.onMouseMove(e);
     this.handleMouseUpBound = () => {
       this.drag = null;
@@ -165,6 +167,7 @@ export class SheetGrid {
     this.resizeObserver.disconnect();
     this.container.removeEventListener("wheel", this.handleWheelBound);
     this.container.removeEventListener("keydown", this.handleKeyDownBound);
+    this.overlayCanvas.removeEventListener("mousedown", this.handleMouseDownBound);
     globalThis.removeEventListener("mousemove", this.handleMouseMoveBound);
     globalThis.removeEventListener("mouseup", this.handleMouseUpBound);
     this.contentCanvas.remove();
@@ -218,16 +221,15 @@ export class SheetGrid {
   // --- scrolling ------------------------------------------------------------
 
   private setScroll(scrollX: number, scrollY: number): void {
-    const frozenWidth = this.cols.positionOf(this.worksheet.frozenColumns);
-    const frozenHeight = this.rows.positionOf(this.worksheet.frozenRows);
+    // viewport size excludes headers but includes the frozen zone; clampScroll
+    // derives maxScroll = totalSize - viewport (frozen cancels out), matching
+    // computeScrollbarGeometry().maxScroll exactly.
     const clamped = clampScroll(
       { scrollX, scrollY },
       this.rows,
       this.cols,
       this.contentWidth() - this.headerWidth,
       this.contentHeight() - this.headerHeight,
-      frozenWidth,
-      frozenHeight,
     );
     if (clamped.scrollX === this.scrollX && clamped.scrollY === this.scrollY) return;
     this.scrollX = clamped.scrollX;
@@ -278,12 +280,16 @@ export class SheetGrid {
     const { full, rects } = this.dirty.consume(this.layout, this.rows, this.cols);
     if (full) {
       this.paintAll(this.layout);
-    } else if (rects.length > 0) {
-      this.paintDirtyRects(this.layout, rects);
-      // Headers are unaffected by cell content; repaint them only when the
-      // selection highlight moved (headerDirty) or on scroll/full redraw.
-    } else if (this.headerDirty) {
-      this.paintHeaders(this.layout);
+    } else {
+      // Dirty cell rects and the header highlight are independent: a single
+      // frame can carry both (e.g. editor commit + Enter moves the selection),
+      // so each gets its own branch instead of an else-if chain.
+      if (rects.length > 0) {
+        this.paintDirtyRects(this.layout, rects);
+      }
+      if (this.headerDirty) {
+        this.paintHeaders(this.layout);
+      }
     }
     this.headerDirty = false;
     // Overlay is cheap: repaint on any content change too (selection geometry
@@ -675,7 +681,7 @@ export class SheetGrid {
 
   private attachInputHandlers(): void {
     this.container.addEventListener("wheel", this.handleWheelBound, { passive: false });
-    this.overlayCanvas.addEventListener("mousedown", (e) => this.onMouseDown(e));
+    this.overlayCanvas.addEventListener("mousedown", this.handleMouseDownBound);
     globalThis.addEventListener("mousemove", this.handleMouseMoveBound);
     globalThis.addEventListener("mouseup", this.handleMouseUpBound);
     this.container.addEventListener("keydown", this.handleKeyDownBound);
