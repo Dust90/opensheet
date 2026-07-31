@@ -169,6 +169,22 @@ export class DependencyGraph {
   }
 
   /**
+   * Return the keys of every formula cell whose coordinate falls inside
+   * `range` — used by the sparse-scan Hook to find stale Graph nodes that
+   * belong to a changed area without iterating every coordinate.
+   */
+  formulaCellsInRange(range: { startRow: number; startCol: number; endRow: number; endCol: number }): CellAddress[] {
+    const result: CellAddress[] = [];
+    for (const key of this.formulas.keys()) {
+      const { row, col } = addrOf(key);
+      if (row >= range.startRow && row <= range.endRow && col >= range.startCol && col <= range.endCol) {
+        result.push({ row, col });
+      }
+    }
+    return result;
+  }
+
+  /**
    * Topological order over EVERY formula (Snapshot-load rebuild): includes
    * all non-cyclic formulas (dependencies first); cycle members listed
    * separately. Unlike topoOrder(), nothing is treated as a "root" to drop.

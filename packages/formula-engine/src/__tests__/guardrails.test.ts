@@ -40,7 +40,20 @@ describe("M3.5 numeric finiteness", () => {
   it("finite arithmetic stays numeric", () => {
     expect(evalWithBudget("=1e308/1e308", { maxCellReads: 100 })).toBe(1);
   });
+
+  it("Fix 5: aggregate functions gate Infinity results as #NUM!", () => {
+    // SUM of two large values overflows to Infinity → #NUM!
+    expect(evalWithBudget("=SUM(1e308,1e308)", { maxCellReads: 100 })).toMatchObject({ type: "#NUM!" });
+    // AVERAGE same overflow
+    expect(evalWithBudget("=AVERAGE(1e308,1e308)", { maxCellReads: 100 })).toMatchObject({ type: "#NUM!" });
+    // SQRT of a string that parses as Infinity → #NUM!
+    expect(evalWithBudget("=SQRT(\"1e309\")", { maxCellReads: 100 })).toMatchObject({ type: "#NUM!" });
+    // Finite values still work
+    expect(evalWithBudget("=SUM(1e307,1e307)", { maxCellReads: 100 })).toBe(2e307);
+    expect(evalWithBudget("=SQRT(4)", { maxCellReads: 100 })).toBe(2);
+  });
 });
+
 
 describe("M3.5 evaluation budget", () => {
   it("exceeding the cell-read budget returns #VALUE! instead of hanging", () => {
@@ -122,5 +135,25 @@ describe("M3.5 formula reference rewriting", () => {
     expect(JSON.stringify(parseFormula(`=${exprToString(paren.ast)}`).ast)).toBe(JSON.stringify(paren.ast));
     expect(exprToString(parseFormula("=2^3^2").ast)).toBe("2^3^2");
     expect(exprToString(parseFormula("=2^-2").ast)).toBe("2^-2");
+  });
+
+  it("Fix 4: subtraction and division right-child associativity preserved", () => {
+    // Subtraction: 10-(3-1) must NOT collapse to 10-3-1 (8 vs 6).
+    const sub = parseFormula("=10-(3-1)");
+    expect(exprToString(sub.ast)).toBe("10-(3-1)");
+    expect(JSON.stringify(parseFormula(`=${exprToString(sub.ast)}`).ast)).toBe(JSON.stringify(sub.ast));
+
+    // Division: 8/(4/2) must NOT collapse to 8/4/2 (4 vs 1).
+    const div = parseFormula("=8/(4/2)");
+    expect(exprToString(div.ast)).toBe("8/(4/2)");
+    expect(JSON.stringify(parseFormula(`=${exprToString(div.ast)}`).ast)).toBe(JSON.stringify(div.ast));
+
+    // Mixed: A1-(B1+C1) — right child is lower prec so parens already present.
+    const mix = parseFormula("=A1-(B1+C1)");
+    expect(exprToString(mix.ast)).toBe("A1-(B1+C1)");
+
+    // Comparison nesting: (A1=B1)=TRUE — unusual but must round-trip.
+    const cmp = parseFormula("=(A1=B1)=TRUE");
+    expect(JSON.stringify(parseFormula(`=${exprToString(cmp.ast)}`).ast)).toBe(JSON.stringify(cmp.ast));
   });
 });

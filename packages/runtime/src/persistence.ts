@@ -11,6 +11,7 @@
 
 import type { Unsubscribe, WorkbookSnapshot } from "@opensheet/shared";
 import { CELL_ERROR_TYPES, MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+import { parseFormula } from "@opensheet/formula-engine";
 import type { OpenSheetAPI, WorkbookInfo } from "./api.js";
 
 export interface StorageLike {
@@ -168,7 +169,17 @@ function isValidCellData(value: unknown, styleIds: ReadonlySet<string>): boolean
   if (!isPlainRecord(value)) return false;
   const data = value as Record<string, unknown>;
   if (!isValidCellValue(data.value)) return false;
-  for (const field of ["formula", "styleId", "numberFormat"]) {
+  // Fix 8: validate formula syntax — a cell with a formula that cannot be
+  // parsed would pass the validator but crash loadWorkbook().
+  if (data.formula !== undefined) {
+    if (typeof data.formula !== "string" || !data.formula.startsWith("=")) return false;
+    try {
+      parseFormula(data.formula as string);
+    } catch {
+      return false;
+    }
+  }
+  for (const field of ["styleId", "numberFormat"]) {
     if (data[field] !== undefined && typeof data[field] !== "string") return false;
   }
   // styleId must reference an existing style (else rendering can't resolve).

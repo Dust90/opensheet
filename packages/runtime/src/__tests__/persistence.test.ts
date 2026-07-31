@@ -375,3 +375,146 @@ describe("createPersistence", () => {
     expect(value).toBe("a1");
   });
 });
+
+// ── M3.6 Fix 8: Snapshot formula syntax validation ────────────────────────
+
+describe("M3.6 Fix 8: Snapshot formula syntax validation", () => {
+  const base = {
+    version: WORKBOOK_SNAPSHOT_VERSION,
+    id: "wb",
+    name: "n",
+    activeSheetId: "s",
+    styles: {},
+  };
+  const fullSheet = {
+    id: "s",
+    name: "S",
+    rowCount: 10,
+    columnCount: 5,
+    cells: {} as Record<string, unknown>,
+    rowHeights: {},
+    columnWidths: {},
+    frozenRows: 0,
+    frozenColumns: 0,
+  };
+  const make = (cells: Record<string, unknown>) =>
+    validateSnapshot({ ...base, sheets: [{ ...fullSheet, cells }] });
+
+  it("rejects formula that does not start with =", () => {
+    expect(make({ "0:0": { value: null, formula: "SUM(A1)" } })).toBe(false);
+  });
+
+  it("rejects syntactically invalid formula (unclosed paren)", () => {
+    expect(make({ "0:0": { value: null, formula: "=SUM(" } })).toBe(false);
+  });
+
+  it("accepts a well-formed formula", () => {
+    expect(make({ "0:0": { value: 2, formula: "=1+1" } })).toBe(true);
+  });
+
+  it("validateSnapshot(true) implies loadWorkbook does not throw", () => {
+    const snapshot = {
+      ...base,
+      sheets: [{ ...fullSheet, cells: { "0:0": { value: 2, formula: "=1+1" } } }],
+    };
+    expect(validateSnapshot(snapshot)).toBe(true);
+    const api = createOpenSheet();
+    expect(() => api.loadWorkbook(snapshot as WorkbookSnapshot)).not.toThrow();
+  });
+});
+
+// ── M3.6 Fix 1: Multi-sheet formula isolation ─────────────────────────────
+
+describe("M3.6 Fix 1: Multi-sheet formula isolation", () => {
+  it("formula on Sheet2 does not affect Sheet1 and vice versa", async () => {
+    const api = createOpenSheet();
+    const wb = api.createWorkbook({ name: "MS" });
+    const [sheet1Id] = [wb.activeSheetId];
+
+    // Create a second sheet
+    const sheet2 = api.createSheet({ name: "Sheet2", rows: 100, columns: 10 });
+
+    // Set A1=10 on Sheet1, A1==2+2 on Sheet2
+    await api.applyOperations({
+      workbookId: wb.id, sheetId: sheet1Id!, atomic: true,
+      operations: [{ type: "range.write", range: "A1", values: [[10]] }],
+    });
+    await api.applyOperations({
+      workbookId: wb.id, sheetId: sheet2.id, atomic: true,
+      operations: [{ type: "formula.set", range: "A1", formula: "=2+2" }],
+    });
+
+    // Sheet1 A1 must still be 10 (literal), Sheet2 A1 must be 4 (formula result).
+    const s1 = api.readRange({ sheetId: sheet1Id!, range: "A1" })[0]![0];
+    const s2 = api.readRange({ sheetId: sheet2.id, range: "A1" })[0]![0];
+    expect(s1).toBe(10);
+    expect(s2).toBe(4);
+  });
+
+  it("Snapshot load rebuilds formulas on all sheets independently", () => {
+    const snapshot: WorkbookSnapshot = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "MS",
+      activeSheetId: "s1",
+      sheets: [
+        {
+          id: "s1", name: "Sheet1", rowCount: 10, columnCount: 5,
+          cells: { "0:0": { value: 99 /* stale */, formula: "=1+1" } },
+          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0,
+        },
+        {
+          id: "s2", name: "Sheet2", rowCount: 10, columnCount: 5,
+          cells: { "0:0": { value: 99 /* stale */, formula: "=3+4" } },
+          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0,
+        },
+      ],
+      styles: {},
+    };
+    expect(validateSnapshot(snapshot)).toBe(true);
+    const api = createOpenSheet();
+    const wb = api.loadWorkbook(snapshot);
+    // Both sheets must be recalculated (stale cache 99 replaced).
+    expect(api.readRange({ sheetId: "s1", range: "A1" })[0]![0]).toBe(2);
+    expect(api.readRange({ sheetId: "s2", range: "A1" })[0]![0]).toBe(7);
+  });
+});
+
+// ── M3.6 Fix 3: Snapshot cycle order ─────────────────────────────────────
+
+describe("M3.6 Fix 3: Snapshot rebuild writes #CYCLE! before evaluating downstream", () => {
+  it("downstream formula does not see stale cached value from a cycle member", () => {
+    const snapshot: WorkbookSnapshot = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "CY",
+      activeSheetId: "s",
+      sheets: [
+        {
+          id: "s", name: "S", rowCount: 10, columnCount: 5,
+          cells: {
+            // A1 and B1 form a cycle; C1 depends on A1.
+            "0:0": { value: 999 /* stale */, formula: "=B1+1" },  // A1
+            "0:1": { value: 999 /* stale */, formula: "=A1+1" },  // B1
+            "0:2": { value: 1998 /* stale */, formula: "=A1*2" }, // C1
+          },
+          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0,
+        },
+      ],
+      styles: {},
+    };
+    expect(validateSnapshot(snapshot)).toBe(true);
+    const api = createOpenSheet();
+    const wb = api.loadWorkbook(snapshot);
+    const sheetId = wb.activeSheetId;
+    // A1 and B1 must be #CYCLE! (not 999).
+    expect(api.readRange({ sheetId, range: "A1" })[0]![0]).toMatchObject({ type: "#CYCLE!" });
+    expect(api.readRange({ sheetId, range: "B1" })[0]![0]).toMatchObject({ type: "#CYCLE!" });
+    // C1 depends on A1 which is #CYCLE!, so C1 must also be a #CYCLE! error
+    // (or any error), NOT the stale value 1998.
+    const c1 = api.readRange({ sheetId, range: "C1" })[0]![0];
+    expect(c1).not.toBe(1998);
+    expect(typeof c1 === "object" && c1 !== null && "type" in (c1 as object)).toBe(true);
+  });
+});
+

@@ -60,21 +60,59 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     // changed (formula.set, literal overwrite, undo/redo, structure rewrite)
     // — detected by diffing formula sources against the graph.
     bus.addBeforeCommitHook(({ workbook: wb, changes, derived }) => {
-      const changedFormulas: CellAddress[] = [];
+      const changedFormulas: Array<{ sheetId: string; row: number; col: number }> = [];
+
       for (const change of changes) {
         const sheetView = wb.listSheetViews().find((s) => s.id === change.sheetId);
         if (sheetView === undefined) continue;
-        for (let row = change.range.startRow; row <= change.range.endRow; row++) {
-          for (let col = change.range.startCol; col <= change.range.endCol; col++) {
-            const data = sheetView.getCell(row, col);
-            const hasFormula = data?.formula !== undefined;
-            const registered = formulas.graph.hasFormula(row, col);
-            if (hasFormula !== registered || (hasFormula && data!.formula !== formulas.graph.formulaSourceOf(row, col))) {
-              changedFormulas.push({ row, col });
+
+        if (change.kind === "rows" || change.kind === "columns") {
+          // Fix 2: structural command — rebuild the entire sheet graph sparsely
+          // (iterates only non-empty CellStore entries, not all coordinates).
+          // This corrects shifted coordinates, removes deleted-row nodes, and
+          // handles out-of-bounds references atomically.
+          formulas.rebuildSheetGraph(wb, change.sheetId);
+          // After rebuild, ALL formula cells on this sheet are "changed".
+          for (const [row, col, data] of sheetView.cellEntries()) {
+            if (data.formula !== undefined) {
+              changedFormulas.push({ sheetId: change.sheetId, row, col });
+            }
+          }
+        } else {
+          // Fix 2: sparse union for ordinary cell changes —
+          // 1. non-empty cells inside the changed range that carry a formula;
+          // 2. stale graph nodes that fall inside the changed range.
+          const seen = new Set<string>();
+          const addChanged = (row: number, col: number) => {
+            const key = `${row}:${col}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            changedFormulas.push({ sheetId: change.sheetId, row, col });
+          };
+
+          // Side A: cells that NOW have a formula in this range.
+          sheetView.forEachCellInRange(change.range, (row, col, data) => {
+            const hasFormula = data.formula !== undefined;
+            const registered = formulas.hasFormula(change.sheetId, row, col);
+            if (
+              hasFormula !== registered ||
+              (hasFormula && data.formula !== formulas.formulaSourceOf(change.sheetId, row, col))
+            ) {
+              addChanged(row, col);
+            }
+          });
+
+          // Side B: stale graph nodes inside this range (e.g. formula was deleted).
+          for (const addr of formulas.graphFormulaCellsInRange(change.sheetId, change.range)) {
+            const data = sheetView.getCell(addr.row, addr.col);
+            if (data?.formula === undefined) {
+              // Formula was removed — must de-register the old node.
+              addChanged(addr.row, addr.col);
             }
           }
         }
       }
+
       formulas.recalculate(wb, changes, changedFormulas, derived);
     });
     const entry: WorkbookEntry = { workbook, bus, history, formulas };

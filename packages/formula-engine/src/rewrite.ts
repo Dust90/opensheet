@@ -103,13 +103,32 @@ const PRECEDENCE: Record<string, number> = {
   "^": 5,
 };
 
+/**
+ * True for operators that are left-associative BUT NOT commutative on the
+ * right side. For these, the right child at equal precedence MUST keep parens:
+ *   10-(3-1) ≠ 10-3-1   (subtraction)
+ *   8/(4/2)  ≠ 8/4/2    (division)
+ *   a<(b<c) differs from a<b<c (comparison chaining is rare but must be safe)
+ * `+` and `*` are truly commutative/associative — no bump needed.
+ * `^` is right-associative — handled separately.
+ */
+function isLeftAssocNonCommutative(op: string): boolean {
+  return op === "-" || op === "/" || op === "=" || op === "<>" || op === "<" || op === ">" || op === "<=" || op === ">=";
+}
+
 function precOf(node: Expr): number {
   return node.kind === "binary" ? (PRECEDENCE[node.op] ?? 0) : node.kind === "unary" ? 6 : 7;
 }
 
 /**
- * `side` matters for right-associativity: `^` is right-assoc, so the LEFT
- * operand of `^` needs parens when it is also a `^` (2^3^2 = 2^(3^2)).
+ * Serialize a node with awareness of its parent's precedence and which side
+ * (left/right) it occupies.
+ *
+ * Rules:
+ *  - `ownPrec < parentPrec`  → always needs parens.
+ *  - `^` left child at prec 5 → needs parens (right-associativity).
+ *  - Left-assoc non-commutative operators: right child at EQUAL precedence
+ *    needs parens to preserve semantics (parentPrec += 0.5 trick).
  */
 function exprNodeToString(node: Expr, parentPrec: number, side: "left" | "right"): string {
   const inner = rawToString(node);
@@ -144,7 +163,12 @@ function rawToString(node: Expr): string {
     case "binary": {
       const prec = PRECEDENCE[node.op] ?? 0;
       const left = exprNodeToString(node.left, prec, "left");
-      const right = exprNodeToString(node.right, prec, "right");
+      // For left-associative non-commutative operators (-, /, comparisons) the
+      // right child at equal precedence must keep its parentheses.  We simulate
+      // this by bumping the effective parent precedence by 0.5, which is less
+      // than any integer step in PRECEDENCE but still greater than `prec`.
+      const rightPrec = isLeftAssocNonCommutative(node.op) ? prec + 0.5 : prec;
+      const right = exprNodeToString(node.right, rightPrec, "right");
       return `${left}${node.op}${right}`;
     }
   }

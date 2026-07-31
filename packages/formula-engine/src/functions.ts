@@ -40,6 +40,11 @@ function toNumber(value: CellValue): number {
   if (Number.isNaN(n)) {
     throw { type: "#VALUE!", message: `"${value}" is not numeric` };
   }
+  // Reject strings that parse to ±Infinity (e.g. "1e309") — Snapshot
+  // validator rejects stored Infinity, so evaluation must not produce it.
+  if (!Number.isFinite(n)) {
+    throw { type: "#NUM!", message: `"${value}" is out of numeric range` };
+  }
   return n;
 }
 
@@ -87,13 +92,13 @@ export function createDefaultFunctions(): FunctionRegistry {
         if (v === null || typeof v === "boolean") continue;
         if (typeof v === "string") {
           const n = Number(v);
-          if (!Number.isNaN(n)) total += n;
+          if (!Number.isNaN(n) && Number.isFinite(n)) total += n;
           continue;
         }
         total += v;
       }
     }
-    return total;
+    return finiteNumber(total);
   });
 
   registry.register("AVERAGE", (args) => {
@@ -105,7 +110,7 @@ export function createDefaultFunctions(): FunctionRegistry {
         if (v === null || typeof v === "boolean") continue;
         if (typeof v === "string") {
           const n = Number(v);
-          if (!Number.isNaN(n)) {
+          if (!Number.isNaN(n) && Number.isFinite(n)) {
             total += n;
             count++;
           }
@@ -115,7 +120,8 @@ export function createDefaultFunctions(): FunctionRegistry {
         count++;
       }
     }
-    return count === 0 ? { type: "#DIV/0!", message: "AVERAGE of no values" } : total / count;
+    if (count === 0) return { type: "#DIV/0!", message: "AVERAGE of no values" };
+    return finiteNumber(total / count);
   });
 
   registry.register("MIN", (args) => {
@@ -219,7 +225,7 @@ export function createDefaultFunctions(): FunctionRegistry {
   registry.register("SQRT", (args) => {
     const n = toNumber(scalarOf(args[0]!));
     if (n < 0) return { type: "#NUM!", message: "SQRT of negative number" };
-    return Math.sqrt(n);
+    return finiteNumber(Math.sqrt(n));
   });
 
   registry.register("CONCAT", (args) => {
@@ -306,7 +312,7 @@ export function createDefaultFunctions(): FunctionRegistry {
       const n = typeof src === "string" ? Number(src) : toNumber(src);
       if (!Number.isNaN(n)) total += n;
     }
-    return total;
+    return finiteNumber(total);
   });
 
   registry.register("ISBLANK", (args) => {
