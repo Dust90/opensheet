@@ -8,6 +8,7 @@ export type SheetErrorCode =
   | "E_VALIDATION"
   | "E_UNKNOWN_COMMAND"
   | "E_OP_FAILED"
+  | "E_FORMULA_SYNTAX"
   | "E_NOT_IMPLEMENTED";
 
 /** Base error for all OpenSheet failures. Carries a stable machine-readable code. */

@@ -10,7 +10,7 @@
 //   - Debounced saves coalesce bursts of edits into one write.
 
 import type { Unsubscribe, WorkbookSnapshot } from "@opensheet/shared";
-import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+import { CELL_ERROR_TYPES, MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
 import type { OpenSheetAPI, WorkbookInfo } from "./api.js";
 
 export interface StorageLike {
@@ -114,7 +114,7 @@ function isCellKeyInBounds(key: string, rowCount: number, columnCount: number): 
   return Number(match[1]) < rowCount && Number(match[2]) < columnCount;
 }
 
-const CELL_ERROR_TYPES = new Set(["#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#N/A", "#CYCLE!"]);
+const CELL_ERROR_TYPES_SET = new Set<string>(CELL_ERROR_TYPES);
 
 /** CellData shape: legal value + optional string metadata. */
 function isValidCellData(value: unknown): boolean {
@@ -132,7 +132,7 @@ function isValidCellValue(value: unknown): boolean {
   if (primitive) return true;
   if (!isPlainRecord(value)) return false;
   // CellError
-  if (!CELL_ERROR_TYPES.has(String((value as Record<string, unknown>).type))) return false;
+  if (!CELL_ERROR_TYPES_SET.has(String((value as Record<string, unknown>).type))) return false;
   const message = (value as Record<string, unknown>).message;
   return message === undefined || typeof message === "string";
 }

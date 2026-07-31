@@ -2,7 +2,23 @@
 
 export type CellPrimitive = string | number | boolean | null;
 
-export type CellErrorType = "#REF!" | "#VALUE!" | "#DIV/0!" | "#NAME?" | "#N/A" | "#CYCLE!";
+export type CellErrorType =
+  | "#REF!"
+  | "#VALUE!"
+  | "#DIV/0!"
+  | "#NAME?"
+  | "#N/A"
+  | "#CYCLE!"
+  | "#NUM!";
+export const CELL_ERROR_TYPES: readonly CellErrorType[] = [
+  "#REF!",
+  "#VALUE!",
+  "#DIV/0!",
+  "#NAME?",
+  "#N/A",
+  "#CYCLE!",
+  "#NUM!",
+];
 
 export interface CellError {
   type: CellErrorType;
