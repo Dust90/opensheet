@@ -1,0 +1,211 @@
+// Viewport: visible range computation + frozen-pane quadrant geometry.
+// Pure functions — no DOM, unit-testable in node.
+
+import type { CellAddress } from "@opensheet/shared";
+import type { AxisMetrics } from "./axis-metrics.js";
+
+export interface ViewportInput {
+  scrollX: number;
+  scrollY: number;
+  /** Canvas CSS pixel size. */
+  width: number;
+  height: number;
+  rows: AxisMetrics;
+  cols: AxisMetrics;
+  frozenRowCount: number;
+  frozenColCount: number;
+  /** Extra pixels of overscan beyond each edge (buffer zone). */
+  bufferPx: number;
+  headerWidth: number;
+  headerHeight: number;
+}
+
+/** Inclusive index range plus its canvas pixel origin. */
+export interface Quadrant {
+  rowStart: number;
+  rowEnd: number;
+  colStart: number;
+  colEnd: number;
+  /** Canvas x of colStart's left edge. */
+  originX: number;
+  /** Canvas y of rowStart's top edge. */
+  originY: number;
+  /** Canvas clip rect for this quadrant. */
+  clipX: number;
+  clipY: number;
+  clipWidth: number;
+  clipHeight: number;
+}
+
+export interface ViewportLayout {
+  /** Frozen corner (frozen rows × frozen cols), null when no freeze. */
+  corner: Quadrant | null;
+  /** Frozen rows strip (scrolls horizontally), null when no frozen rows. */
+  top: Quadrant | null;
+  /** Frozen cols strip (scrolls vertically), null when no frozen cols. */
+  left: Quadrant | null;
+  /** Main scrollable quadrant. */
+  main: Quadrant;
+  frozenWidth: number;
+  frozenHeight: number;
+  /** Canvas rect of the scrollable (non-frozen) area. */
+  mainX: number;
+  mainY: number;
+  mainWidth: number;
+  mainHeight: number;
+}
+
+export function computeViewport(input: ViewportInput): ViewportLayout {
+  const { rows, cols, bufferPx } = input;
+  const frozenRowCount = Math.min(input.frozenRowCount, rows.length);
+  const frozenColCount = Math.min(input.frozenColCount, cols.length);
+  const frozenWidth = cols.positionOf(frozenColCount);
+  const frozenHeight = rows.positionOf(frozenRowCount);
+
+  const mainX = input.headerWidth + frozenWidth;
+  const mainY = input.headerHeight + frozenHeight;
+  const mainWidth = Math.max(0, input.width - mainX);
+  const mainHeight = Math.max(0, input.height - mainY);
+
+  // Main quadrant: buffered visible window in the scrollable space.
+  const mainRowStart = rows.indexAt(Math.max(0, input.scrollY - bufferPx));
+  const mainRowEnd = Math.min(
+    rows.length - 1,
+    rows.indexAt(input.scrollY + mainHeight + bufferPx),
+  );
+  const mainColStart = cols.indexAt(Math.max(0, input.scrollX - bufferPx));
+  const mainColEnd = Math.min(
+    cols.length - 1,
+    cols.indexAt(input.scrollX + mainWidth + bufferPx),
+  );
+
+  const main: Quadrant = {
+    rowStart: mainRowStart,
+    rowEnd: mainRowEnd,
+    colStart: mainColStart,
+    colEnd: mainColEnd,
+    originX: mainX + (cols.positionOf(mainColStart) - input.scrollX),
+    originY: mainY + (rows.positionOf(mainRowStart) - input.scrollY),
+    clipX: mainX,
+    clipY: mainY,
+    clipWidth: mainWidth,
+    clipHeight: mainHeight,
+  };
+
+  let corner: Quadrant | null = null;
+  let top: Quadrant | null = null;
+  let left: Quadrant | null = null;
+
+  if (frozenRowCount > 0) {
+    top = {
+      rowStart: 0,
+      rowEnd: frozenRowCount - 1,
+      colStart: mainColStart,
+      colEnd: mainColEnd,
+      originX: main.originX,
+      originY: input.headerHeight,
+      clipX: mainX,
+      clipY: input.headerHeight,
+      clipWidth: mainWidth,
+      clipHeight: frozenHeight,
+    };
+  }
+  if (frozenColCount > 0) {
+    left = {
+      rowStart: mainRowStart,
+      rowEnd: mainRowEnd,
+      colStart: 0,
+      colEnd: frozenColCount - 1,
+      originX: input.headerWidth,
+      originY: main.originY,
+      clipX: input.headerWidth,
+      clipY: mainY,
+      clipWidth: frozenWidth,
+      clipHeight: mainHeight,
+    };
+  }
+  if (frozenRowCount > 0 && frozenColCount > 0) {
+    corner = {
+      rowStart: 0,
+      rowEnd: frozenRowCount - 1,
+      colStart: 0,
+      colEnd: frozenColCount - 1,
+      originX: input.headerWidth,
+      originY: input.headerHeight,
+      clipX: input.headerWidth,
+      clipY: input.headerHeight,
+      clipWidth: frozenWidth,
+      clipHeight: frozenHeight,
+    };
+  }
+
+  return { corner, top, left, main, frozenWidth, frozenHeight, mainX, mainY, mainWidth, mainHeight };
+}
+
+export interface ScrollPosition {
+  scrollX: number;
+  scrollY: number;
+}
+
+/**
+ * Minimal scroll adjustment so `cell` becomes fully visible. Cells inside
+ * frozen zones are always visible. Accounts for frozen sizes and headers.
+ */
+export function computeScrollToCell(
+  cell: CellAddress,
+  scroll: ScrollPosition,
+  input: {
+    viewportWidth: number;
+    viewportHeight: number;
+    rows: AxisMetrics;
+    cols: AxisMetrics;
+    frozenRowCount: number;
+    frozenColCount: number;
+  },
+): ScrollPosition {
+  const { rows, cols } = input;
+  const frozenWidth = cols.positionOf(Math.min(input.frozenColCount, cols.length));
+  const frozenHeight = rows.positionOf(Math.min(input.frozenRowCount, rows.length));
+  const viewWidth = input.viewportWidth - frozenWidth;
+  const viewHeight = input.viewportHeight - frozenHeight;
+
+  let { scrollX, scrollY } = scroll;
+
+  if (cell.col >= input.frozenColCount) {
+    const cellStart = cols.positionOf(cell.col);
+    const cellEnd = cellStart + cols.sizeOf(cell.col);
+    if (cellStart < scrollX) scrollX = cellStart;
+    else if (cellEnd > scrollX + viewWidth) scrollX = cellEnd - viewWidth;
+  }
+  if (cell.row >= input.frozenRowCount) {
+    const cellStart = rows.positionOf(cell.row);
+    const cellEnd = cellStart + rows.sizeOf(cell.row);
+    if (cellStart < scrollY) scrollY = cellStart;
+    else if (cellEnd > scrollY + viewHeight) scrollY = cellEnd - viewHeight;
+  }
+
+  const maxScrollX = Math.max(0, cols.totalSize - viewWidth);
+  const maxScrollY = Math.max(0, rows.totalSize - viewHeight);
+  return {
+    scrollX: Math.min(Math.max(0, scrollX), maxScrollX),
+    scrollY: Math.min(Math.max(0, scrollY), maxScrollY),
+  };
+}
+
+/** Clamp scroll into valid range given content and viewport size. */
+export function clampScroll(
+  scroll: ScrollPosition,
+  rows: AxisMetrics,
+  cols: AxisMetrics,
+  viewportWidth: number,
+  viewportHeight: number,
+  frozenWidth: number,
+  frozenHeight: number,
+): ScrollPosition {
+  const maxScrollX = Math.max(0, cols.totalSize - (viewportWidth - frozenWidth));
+  const maxScrollY = Math.max(0, rows.totalSize - (viewportHeight - frozenHeight));
+  return {
+    scrollX: Math.min(Math.max(0, scroll.scrollX), maxScrollX),
+    scrollY: Math.min(Math.max(0, scroll.scrollY), maxScrollY),
+  };
+}

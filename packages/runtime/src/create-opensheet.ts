@@ -188,6 +188,14 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+
+    getWorksheetView(sheetId: string) {
+      return getEntry().workbook.getSheetView(sheetId);
+    },
+
+    resolveStyle(styleId: string) {
+      return getEntry().workbook.styles.get(styleId);
+    },
   };
 
   return api;

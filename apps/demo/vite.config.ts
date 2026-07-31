@@ -15,6 +15,7 @@ export default defineConfig({
       "@opensheet/commands": r("../../packages/commands/src/index.ts"),
       "@opensheet/history": r("../../packages/history/src/index.ts"),
       "@opensheet/plugin-api": r("../../packages/plugin-api/src/index.ts"),
+      "@opensheet/renderer-canvas": r("../../packages/renderer-canvas/src/index.ts"),
       "@opensheet/runtime": r("../../packages/runtime/src/index.ts"),
     },
   },

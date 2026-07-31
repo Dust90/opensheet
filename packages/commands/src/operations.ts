@@ -2,11 +2,12 @@
 
 import type { CellPrimitive } from "@opensheet/shared";
 
-/** M0 operation set; extended in later milestones (formula.set, row/col ops, ...). */
+/** Operation set; extended in later milestones (formula.set, row/col ops, ...). */
 export type SheetOperation =
   | { type: "cell.set"; range: string; value: CellPrimitive }
   | { type: "cell.clear"; range: string }
-  | { type: "range.write"; range: string; values: CellPrimitive[][] };
+  | { type: "range.write"; range: string; values: CellPrimitive[][] }
+  | { type: "sheet.freeze"; frozenRows: number; frozenColumns: number };
 
 export interface ApplyOperationsRequest {
   workbookId: string;

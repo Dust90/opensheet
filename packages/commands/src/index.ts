@@ -7,6 +7,7 @@ export type {
   BeforeCommitHook,
   CommandContext,
   CommandOutcome,
+  DerivedWriter,
   HistorySink,
   JournalBatch,
   JournalEntry,
@@ -22,10 +23,13 @@ export {
 export { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/cells.js";
 export { sheetCreateCommand } from "./commands/sheets.js";
 export type { SheetCreatePayload, SheetCreateResult } from "./commands/sheets.js";
+export { sheetFreezeCommand } from "./commands/freeze.js";
+export type { SheetFreezePayload } from "./commands/freeze.js";
 
 import { CommandRegistry } from "./registry.js";
 import { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/cells.js";
 import { sheetCreateCommand } from "./commands/sheets.js";
+import { sheetFreezeCommand } from "./commands/freeze.js";
 
 /** Registry pre-populated with all built-in (M0) commands. */
 export function createDefaultRegistry(): CommandRegistry {
@@ -34,5 +38,6 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register(cellClearCommand);
   registry.register(rangeWriteCommand);
   registry.register(sheetCreateCommand);
+  registry.register(sheetFreezeCommand);
   return registry;
 }

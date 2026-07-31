@@ -135,7 +135,11 @@ export class Workbook {
         listener(event);
       } catch (error) {
         // Isolated: a broken observer must not corrupt commit/history.
-        this.onListenerError?.(error, event);
+        try {
+          this.onListenerError?.(error, event);
+        } catch {
+          // Error reporting must never affect workbook state.
+        }
       }
     }
   }

@@ -3,11 +3,13 @@
 import type {
   CellAddress,
   CellPrimitive,
+  CellStyle,
   CellValue,
   ChangeEvent,
   Unsubscribe,
   WorkbookSnapshot,
 } from "@opensheet/shared";
+import type { WorksheetView } from "@opensheet/core";
 import type {
   ApplyOperationsRequest,
   ApplyOperationsResult,
@@ -65,6 +67,12 @@ export interface OpenSheetAPI {
 
   /** Extension beyond the base spec: renderer/UI subscribe to merged change events. */
   onChange(listener: (event: ChangeEvent) => void): Unsubscribe;
+
+  /** UI-facing readonly accessor: renderers consume WorksheetView only. */
+  getWorksheetView(sheetId: string): WorksheetView;
+
+  /** Resolve a style id to its (readonly) style; undefined if unknown. */
+  resolveStyle(styleId: string): Readonly<CellStyle> | undefined;
 }
 
 export type { ApplyOperationsRequest, ApplyOperationsResult, CellPrimitive };
