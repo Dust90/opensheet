@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const ALLOWED = {
   shared: [],
   core: ["shared"],
-  commands: ["shared", "core"],
+  commands: ["shared", "core", "formula-engine"],
   history: ["shared", "commands"],
   "formula-engine": ["shared", "core"],
   clipboard: ["shared", "core"],

@@ -78,7 +78,13 @@ function App() {
   const handleCommitCell = useCallback(
     (init: { row: number; col: number; text: string }) => {
       const address = formatAddress({ row: init.row, col: init.col });
-      // Excel-like: typed "42" becomes the number 42, "TRUE" becomes boolean.
+      // M3: input starting with "=" becomes a formula (validated by the
+      // command — syntax errors reject the commit); anything else is a
+      // literal value (Excel-like inference, any old formula replaced).
+      if (init.text.trim().startsWith("=")) {
+        void apply([{ type: "formula.set", range: address, formula: init.text.trim() }]);
+        return;
+      }
       void apply([{ type: "cell.set", range: address, value: inferPrimitive(init.text) }]);
     },
     [apply],

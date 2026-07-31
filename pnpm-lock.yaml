@@ -313,6 +313,9 @@ importers:
       '@opensheet/core':
         specifier: workspace:*
         version: link:../core
+      '@opensheet/formula-engine':
+        specifier: workspace:*
+        version: link:../formula-engine
       '@opensheet/shared':
         specifier: workspace:*
         version: link:../shared
@@ -394,6 +397,9 @@ importers:
       '@opensheet/core':
         specifier: workspace:*
         version: link:../core
+      '@opensheet/formula-engine':
+        specifier: workspace:*
+        version: link:../formula-engine
       '@opensheet/history':
         specifier: workspace:*
         version: link:../history

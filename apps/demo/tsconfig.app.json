@@ -21,6 +21,7 @@
       "@opensheet/commands": ["../../packages/commands/src/index.ts"],
       "@opensheet/history": ["../../packages/history/src/index.ts"],
       "@opensheet/plugin-api": ["../../packages/plugin-api/src/index.ts"],
+      "@opensheet/formula-engine": ["../../packages/formula-engine/src/index.ts"],
       "@opensheet/renderer-canvas": ["../../packages/renderer-canvas/src/index.ts"],
       "@opensheet/runtime": ["../../packages/runtime/src/index.ts"]
     },

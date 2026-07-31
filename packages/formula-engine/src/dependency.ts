@@ -36,9 +36,10 @@ function rangeContains(range: CellRangeRef, row: number, col: number): boolean {
 export class DependencyGraph {
   private readonly formulas = new Map<string, FormulaDependencies>(); // cell → deps
   private readonly dependents = new Map<string, Set<string>>(); // dep cell → formula cells
+  private readonly formulaSources = new Map<string, string>();
 
   /** Register (or replace) a formula cell's dependencies. */
-  setFormula(row: number, col: number, dependencies: FormulaDependencies): void {
+  setFormula(row: number, col: number, dependencies: FormulaDependencies, source?: string): void {
     const key = keyOf(row, col);
     // Remove stale reverse edges.
     const previous = this.formulas.get(key);
@@ -51,6 +52,7 @@ export class DependencyGraph {
       cells: dependencies.cells.map((d) => ({ ...d })),
       ranges: dependencies.ranges.map((r) => ({ start: { ...r.start }, end: { ...r.end } })),
     });
+    if (source !== undefined) this.formulaSources.set(key, source);
     // Reverse edges only for individual cell deps; range deps are resolved
     // by containment queries (a huge range must not expand into edges).
     for (const dep of dependencies.cells) {
@@ -69,6 +71,7 @@ export class DependencyGraph {
       }
     }
     this.formulas.delete(key);
+    this.formulaSources.delete(key);
   }
 
   /** All formula cells that read the given cell (cell deps + range deps). */
@@ -97,6 +100,11 @@ export class DependencyGraph {
       cells: deps?.cells.map((d) => ({ ...d })) ?? [],
       ranges: deps?.ranges.map((r) => ({ start: { ...r.start }, end: { ...r.end } })) ?? [],
     };
+  }
+
+  /** The raw formula source cached for a cell (undefined if not a formula). */
+  formulaSourceOf(row: number, col: number): string | undefined {
+    return this.formulaSources.get(keyOf(row, col));
   }
 
   get size(): number {
@@ -151,5 +159,113 @@ export class DependencyGraph {
 
   hasFormula(row: number, col: number): boolean {
     return this.formulas.has(keyOf(row, col));
+  }
+
+  /** Remove every formula node (Snapshot reload / full rebuild). */
+  removeAll(): void {
+    this.formulas.clear();
+    this.dependents.clear();
+    this.formulaSources.clear();
+  }
+
+  /**
+   * Topological order over EVERY formula (Snapshot-load rebuild): includes
+   * all non-cyclic formulas (dependencies first); cycle members listed
+   * separately. Unlike topoOrder(), nothing is treated as a "root" to drop.
+   */
+  topoOrderAll(): { order: CellAddress[]; cyclic: CellAddress[] } {
+    return this.topoOrderInternal([...this.formulas.keys()], new Set());
+  }
+
+  /**
+   * M3.5 runtime entry point: given the transaction's pending change RANGES,
+   * find every formula that must be recomputed — WITHOUT expanding the
+   * changed areas into per-cell roots. Complexity ≈ O(formulas × ranges).
+   *
+   * Returns:
+   *   directlyChangedFormulas — formula cells inside a changed range (their
+   *       formula source was rewritten/replaced; they must be re-registered
+   *       and evaluated FIRST).
+   *   order — downstream formulas (dependencies before dependents), already
+   *       excluding direct cells and cyclic members.
+   *   cyclic — actual cycle members (write #CYCLE! before downstream pass).
+   */
+  topoOrderForChanges(changes: readonly { sheetId: string; range: import("@opensheet/shared").Range }[]): {
+    directlyChangedFormulas: CellAddress[];
+    order: CellAddress[];
+    cyclic: CellAddress[];
+  } {
+    const directly = new Set<string>();
+    const roots = new Set<string>();
+    const rangeChanged = (row: number, col: number): boolean =>
+      changes.some((c) => row >= c.range.startRow && row <= c.range.endRow && col >= c.range.startCol && col <= c.range.endCol);
+    const rangeIntersects = (r: CellRangeRef): boolean => {
+      const { row1, col1, row2, col2 } = rangeBounds(r);
+      return changes.some(
+        (c) => row1 <= c.range.endRow && row2 >= c.range.startRow && col1 <= c.range.endCol && col2 >= c.range.startCol,
+      );
+    };
+
+    for (const [key, deps] of this.formulas) {
+      const { row, col } = addrOf(key);
+      if (rangeChanged(row, col)) {
+        directly.add(key); // the formula cell itself was written
+        continue;
+      }
+      // A formula is a root if any cell dep falls inside a changed range...
+      const depHits = deps.cells.some((d) => rangeChanged(d.row, d.col));
+      // ...or any range dep intersects a changed range.
+      const rangeHits = deps.ranges.some(rangeIntersects);
+      if (depHits || rangeHits) roots.add(key);
+    }
+
+    const { order, cyclic } = this.topoOrderInternal([...roots], directly);
+    return {
+      directlyChangedFormulas: [...directly].map(addrOf),
+      order,
+      cyclic,
+    };
+  }
+
+  /**
+   * Topological order over a specific set of formula cells (e.g. cells whose
+   * source was just rewritten in ONE transaction — they may depend on each
+   * other). Cycle members among them are reported separately.
+   */
+  topoOrderForCells(cells: readonly CellAddress[]): { order: CellAddress[]; cyclic: CellAddress[] } {
+    return this.topoOrderInternal(cells.map((c) => keyOf(c.row, c.col)), new Set());
+  }
+
+  private topoOrderInternal(roots: readonly string[], excluded: Set<string>): { order: CellAddress[]; cyclic: CellAddress[] } {
+    const visited = new Set<string>();
+    const cyclic = new Set<string>();
+    const order: string[] = [];
+    const inProgress = new Set<string>();
+    const stack: string[] = [];
+
+    const visit = (key: string): void => {
+      if (visited.has(key)) return;
+      if (inProgress.has(key)) {
+        const start = stack.indexOf(key);
+        for (let i = start; i < stack.length; i++) cyclic.add(stack[i]!);
+        return;
+      }
+      inProgress.add(key);
+      stack.push(key);
+      const { row, col } = addrOf(key);
+      for (const dependent of this.directDependents(row, col)) {
+        visit(keyOf(dependent.row, dependent.col));
+      }
+      stack.pop();
+      inProgress.delete(key);
+      visited.add(key);
+      // Excluded cells (roots / directly changed) still TRAVERSE so their
+      // dependents are found, but they are not emitted here.
+      if (!excluded.has(key)) order.push(key);
+    };
+
+    for (const root of roots) visit(root);
+    const filtered = order.filter((key) => !cyclic.has(key)).reverse();
+    return { order: filtered.map(addrOf), cyclic: [...cyclic].map(addrOf) };
   }
 }

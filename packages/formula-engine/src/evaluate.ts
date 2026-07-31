@@ -14,10 +14,40 @@ import { iterateRange, rangeBounds } from "./ast.js";
 import type { CellAddress, CellValue } from "@opensheet/shared";
 import { isCellError, type CellError } from "@opensheet/shared";
 import { FunctionRegistry } from "./functions.js";
+import { finiteNumber } from "./numeric.js";
 
 export interface FormulaContext {
   /** Read a single cell's value (errors are values, not exceptions). */
   getCellValue(ref: CellRef): CellValue;
+}
+
+/**
+ * Deterministic evaluation budget (M3.5 guardrail): a single formula may
+ * read at most `maxCellReads` cells; the whole transaction budget is
+ * enforced by the host sharing one budget across formulas. Exceeding the
+ * limit yields #VALUE! instead of blocking the main thread for millions of
+ * iterations.
+ */
+export interface EvaluationBudget {
+  maxCellReads: number;
+  remaining: number;
+  /** Consume `n` reads; returns false when the budget is exhausted. */
+  consume(n?: number): boolean;
+}
+
+export function makeBudget(maxCellReads: number): EvaluationBudget {
+  const state = { remaining: maxCellReads };
+  return {
+    maxCellReads,
+    get remaining() {
+      return state.remaining;
+    },
+    consume: (n = 1) => {
+      if (state.remaining < n) return false;
+      state.remaining -= n;
+      return true;
+    },
+  };
 }
 
 /** Lazy iterable view over a range of cell values (no array materialization). */
@@ -29,11 +59,14 @@ export interface CellRangeValue {
 
 export type FormulaArgument = CellValue | CellRangeValue;
 
-function makeRangeValue(range: CellRangeRef, ctx: FormulaContext): CellRangeValue {
+function makeRangeValue(range: CellRangeRef, ctx: FormulaContext, budget: EvaluationBudget | undefined): CellRangeValue {
   return {
     kind: "range",
     *values() {
       for (const address of iterateRange(range)) {
+        if (budget !== undefined && !budget.consume(1)) {
+          throw { type: "#VALUE!", message: "Formula evaluation limit exceeded" };
+        }
         yield ctx.getCellValue({ row: address.row, col: address.col, rowAbs: false, colAbs: false });
       }
     },
@@ -101,10 +134,18 @@ function toText(value: CellValue): string {
 
 // --- internal evaluator (may throw CellError for propagation) --------------
 
-function evaluateInternal(expr: Expr, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
+function evaluateInternal(
+  expr: Expr,
+  ctx: FormulaContext,
+  registry: FunctionRegistry,
+  budget: EvaluationBudget | undefined,
+): CellValue {
+  if (budget !== undefined && !budget.consume(1)) {
+    throw { type: "#VALUE!", message: "Formula evaluation limit exceeded" };
+  }
   switch (expr.kind) {
     case "number":
-      return expr.value;
+      return finiteNumber(expr.value);
     case "string":
       return expr.value;
     case "bool":
@@ -114,21 +155,27 @@ function evaluateInternal(expr: Expr, ctx: FormulaContext, registry: FunctionReg
     case "error":
       return expr.error;
     case "cell":
+      if (budget !== undefined && !budget.consume(1)) {
+        throw { type: "#VALUE!", message: "Formula evaluation limit exceeded" };
+      }
       return ctx.getCellValue(expr.ref);
     case "range": {
       // A bare range in a scalar position: Excel returns the top-left cell.
       const { row1, col1 } = rangeBounds({ start: expr.start, end: expr.end });
+      if (budget !== undefined && !budget.consume(1)) {
+        throw { type: "#VALUE!", message: "Formula evaluation limit exceeded" };
+      }
       return ctx.getCellValue({ row: row1, col: col1, rowAbs: false, colAbs: false });
     }
     case "unary": {
-      const operand = evaluateInternal(expr.operand, ctx, registry);
+      const operand = evaluateInternal(expr.operand, ctx, registry, budget);
       switch (expr.op) {
         case "-":
-          return -toNum(operand);
+          return finiteNumber(-toNum(operand));
         case "+":
-          return toNum(operand);
+          return finiteNumber(toNum(operand));
         case "%":
-          return toNum(operand) / 100;
+          return finiteNumber(toNum(operand) / 100);
         case "!":
           return !isTruthy(operand);
         default:
@@ -136,33 +183,38 @@ function evaluateInternal(expr: Expr, ctx: FormulaContext, registry: FunctionReg
       }
     }
     case "binary":
-      return evaluateBinary(expr.op, expr.left, expr.right, ctx, registry);
+      return evaluateBinary(expr.op, expr.left, expr.right, ctx, registry, budget);
     case "function":
-      return evaluateFunction(expr, ctx, registry);
+      return evaluateFunction(expr, ctx, registry, budget);
   }
 }
 
-function evaluateFunction(expr: Extract<Expr, { kind: "function" }>, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
+function evaluateFunction(
+  expr: Extract<Expr, { kind: "function" }>,
+  ctx: FormulaContext,
+  registry: FunctionRegistry,
+  budget: EvaluationBudget | undefined,
+): CellValue {
   const name = expr.name;
   // Special forms — lazy evaluation, args evaluated ONLY on the taken path.
   if (name === "IF") {
     if (expr.args.length < 2 || expr.args.length > 3) {
       return { type: "#VALUE!", message: "IF needs 2-3 arguments" };
     }
-    const condition = isTruthy(evaluateInternal(expr.args[0]!, ctx, registry));
-    if (condition) return evaluateInternal(expr.args[1]!, ctx, registry);
-    if (expr.args.length >= 3) return evaluateInternal(expr.args[2]!, ctx, registry);
+    const condition = isTruthy(evaluateInternal(expr.args[0]!, ctx, registry, budget));
+    if (condition) return evaluateInternal(expr.args[1]!, ctx, registry, budget);
+    if (expr.args.length >= 3) return evaluateInternal(expr.args[2]!, ctx, registry, budget);
     return false;
   }
   if (name === "AND") {
     for (const arg of expr.args) {
-      if (!isTruthy(evaluateInternal(arg, ctx, registry))) return false;
+      if (!isTruthy(evaluateInternal(arg, ctx, registry, budget))) return false;
     }
     return true;
   }
   if (name === "OR") {
     for (const arg of expr.args) {
-      if (isTruthy(evaluateInternal(arg, ctx, registry))) return true;
+      if (isTruthy(evaluateInternal(arg, ctx, registry, budget))) return true;
     }
     return false;
   }
@@ -172,8 +224,8 @@ function evaluateFunction(expr: Extract<Expr, { kind: "function" }>, ctx: Formul
   }
   const impl = registry.get(name);
   const args: FormulaArgument[] = expr.args.map((arg) => {
-    if (arg.kind === "range") return makeRangeValue({ start: arg.start, end: arg.end }, ctx);
-    return evaluateInternal(arg, ctx, registry);
+    if (arg.kind === "range") return makeRangeValue({ start: arg.start, end: arg.end }, ctx, budget);
+    return evaluateInternal(arg, ctx, registry, budget);
   });
   return impl(args);
 }
@@ -184,9 +236,10 @@ function evaluateBinary(
   rightExpr: Expr,
   ctx: FormulaContext,
   registry: FunctionRegistry,
+  budget: EvaluationBudget | undefined,
 ): CellValue {
-  const left = evaluateInternal(leftExpr, ctx, registry);
-  const right = evaluateInternal(rightExpr, ctx, registry);
+  const left = evaluateInternal(leftExpr, ctx, registry, budget);
+  const right = evaluateInternal(rightExpr, ctx, registry, budget);
 
   switch (op) {
     case "=":
@@ -204,18 +257,18 @@ function evaluateBinary(
     case "&":
       return toText(left) + toText(right);
     case "+":
-      return toNum(left) + toNum(right);
+      return finiteNumber(toNum(left) + toNum(right));
     case "-":
-      return toNum(left) - toNum(right);
+      return finiteNumber(toNum(left) - toNum(right));
     case "*":
-      return toNum(left) * toNum(right);
+      return finiteNumber(toNum(left) * toNum(right));
     case "/": {
       const divisor = toNum(right);
       if (divisor === 0) return { type: "#DIV/0!", message: "Division by zero" };
-      return toNum(left) / divisor;
+      return finiteNumber(toNum(left) / divisor);
     }
     case "^":
-      return Math.pow(toNum(left), toNum(right));
+      return finiteNumber(Math.pow(toNum(left), toNum(right)));
     default:
       return { type: "#VALUE!", message: `Unsupported operator ${op}` };
   }
@@ -226,10 +279,16 @@ function evaluateBinary(
 /**
  * Evaluate a parsed AST. NEVER throws a CellError: propagated errors are
  * returned as values. Programming bugs and SheetErrors still propagate.
+ * `budget` optionally caps cell reads per formula (M3.5 guardrail).
  */
-export function evaluateExpr(expr: Expr, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
+export function evaluateExpr(
+  expr: Expr,
+  ctx: FormulaContext,
+  registry: FunctionRegistry,
+  budget?: EvaluationBudget,
+): CellValue {
   try {
-    return evaluateInternal(expr, ctx, registry);
+    return evaluateInternal(expr, ctx, registry, budget);
   } catch (error) {
     if (isErrorLike(error) && isCellError(error as CellError)) {
       return error as CellError;

@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@opensheet/shared": "workspace:*",
-    "@opensheet/core": "workspace:*"
+    "@opensheet/core": "workspace:*",
+    "@opensheet/formula-engine": "workspace:*"
   }
 }

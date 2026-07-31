@@ -19,15 +19,18 @@ import {
   type WorkbookSnapshot,
 } from "@opensheet/shared";
 import type { ImportCSVResult, OpenSheetAPI, SheetInfo, WorkbookInfo } from "./api.js";
+import { FormulaEngine, type FormulaEngineOptions } from "./formula-engine.js";
 
 export interface OpenSheetOptions {
   history?: HistoryOptions;
+  formula?: FormulaEngineOptions;
 }
 
 interface WorkbookEntry {
   workbook: Workbook;
   bus: CommandBus;
   history: HistoryManager;
+  formulas: FormulaEngine;
 }
 
 const DEFAULT_ROWS = 1000;
@@ -51,7 +54,30 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       history,
       registry: createDefaultRegistry(),
     });
-    const entry: WorkbookEntry = { workbook, bus, history };
+    const formulas = new FormulaEngine(options?.formula);
+    // M3: incremental recalculation folds into every commit. changedFormulas
+    // = cells inside changed ranges whose CellData.formula presence/source
+    // changed (formula.set, literal overwrite, undo/redo, structure rewrite)
+    // — detected by diffing formula sources against the graph.
+    bus.addBeforeCommitHook(({ workbook: wb, changes, derived }) => {
+      const changedFormulas: CellAddress[] = [];
+      for (const change of changes) {
+        const sheetView = wb.listSheetViews().find((s) => s.id === change.sheetId);
+        if (sheetView === undefined) continue;
+        for (let row = change.range.startRow; row <= change.range.endRow; row++) {
+          for (let col = change.range.startCol; col <= change.range.endCol; col++) {
+            const data = sheetView.getCell(row, col);
+            const hasFormula = data?.formula !== undefined;
+            const registered = formulas.graph.hasFormula(row, col);
+            if (hasFormula !== registered || (hasFormula && data!.formula !== formulas.graph.formulaSourceOf(row, col))) {
+              changedFormulas.push({ row, col });
+            }
+          }
+        }
+      }
+      formulas.recalculate(wb, changes, changedFormulas, derived);
+    });
+    const entry: WorkbookEntry = { workbook, bus, history, formulas };
     entries.set(workbook.id, entry);
     workbook.onChange((event) => {
       for (const listener of listeners) listener(event);
@@ -72,6 +98,26 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
 
   function toWorkbookInfo(workbook: Workbook): WorkbookInfo {
     return { id: workbook.id, name: workbook.name, activeSheetId: workbook.activeSheetId };
+  }
+
+  /** DerivedWriter bridge for engine rebuilds outside a transaction (Snapshot load). */
+  function makeDerivedBridge(entry: WorkbookEntry): { setComputedValue(sheetId: string, row: number, col: number, value: CellValue): void } {
+    return {
+      setComputedValue: (sheetId, row, col, value) => {
+        const sheet = entry.workbook.getSheet(sheetId);
+        if (row < 0 || row >= sheet.rowCount || col < 0 || col >= sheet.columnCount) return;
+        const previous = sheet.getCell(row, col);
+        const next = { ...(previous ?? {}), value };
+        sheet.setCell(row, col, next);
+        entry.workbook.emit({
+          workbookId: entry.workbook.id,
+          sheetId,
+          changes: [{ range: { startRow: row, startCol: col, endRow: row, endCol: col }, kind: "cells" }],
+          source: "derived",
+          batch: false,
+        });
+      },
+    };
   }
 
   function toSheetInfo(sheet: Worksheet): SheetInfo {
@@ -101,7 +147,11 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
 
     loadWorkbook(snapshot: WorkbookSnapshot) {
       const workbook = workbookFromSnapshot(snapshot);
-      registerEntry(workbook);
+      const entry = registerEntry(workbook);
+      // M3: rebuild the dependency graph from the loaded formulas and
+      // recompute every cached value (do NOT trust the stored cache).
+      const derived = makeDerivedBridge(entry);
+      entry.formulas.rebuildAndRecalculateAll(workbook.asView(), derived);
       pluginHost.emitWorkbookLoaded(workbook.id);
       return toWorkbookInfo(workbook);
     },

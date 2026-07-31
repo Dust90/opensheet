@@ -28,6 +28,8 @@ export { sheetFreezeCommand } from "./commands/freeze.js";
 export type { SheetFreezePayload } from "./commands/freeze.js";
 export { rangeStyleCommand } from "./commands/style.js";
 export type { RangeStylePayload } from "./commands/style.js";
+export { formulaSetCommand } from "./commands/formula.js";
+export type { FormulaSetPayload } from "./commands/formula.js";
 export {
   columnDeleteCommand,
   columnInsertCommand,
@@ -41,6 +43,7 @@ import { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/
 import { sheetCreateCommand } from "./commands/sheets.js";
 import { sheetFreezeCommand } from "./commands/freeze.js";
 import { rangeStyleCommand } from "./commands/style.js";
+import { formulaSetCommand } from "./commands/formula.js";
 import {
   columnDeleteCommand,
   columnInsertCommand,
@@ -57,6 +60,7 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register(sheetCreateCommand);
   registry.register(sheetFreezeCommand);
   registry.register(rangeStyleCommand);
+  registry.register(formulaSetCommand);
   registry.register(rowInsertCommand);
   registry.register(rowDeleteCommand);
   registry.register(columnInsertCommand);

@@ -12,6 +12,7 @@
 // by deleting exactly those rows/cols (cells were shifted, not copied).
 
 import { MAX_COLS, MAX_ROWS, SheetError, type CellData } from "@opensheet/shared";
+import { rewriteFormulaReferences, type StructureChange } from "@opensheet/formula-engine";
 import type { Worksheet } from "@opensheet/core";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
@@ -21,8 +22,6 @@ export interface StructurePayload {
 }
 
 type Axis = "rows" | "columns";
-
-const FULL_RANGE = { startRow: 0, startCol: 0, endRow: 0, endCol: 0 };
 
 function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
   const kind = axis; // "rows" | "columns"
@@ -63,6 +62,29 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
         if (axis === "rows") sheet.deleteRows(payload.at, count);
         else sheet.deleteColumns(payload.at, count);
       };
+      // M3: formula references shift with the structure change (relative
+      // refs follow; absolute refs stay put). Record original↔rewritten so
+      // undo can restore the exact source text.
+      const change: StructureChange =
+        axis === "rows"
+          ? { type: "insertRows", at: payload.at, count }
+          : { type: "insertColumns", at: payload.at, count };
+      const rewrites: Array<{ row: number; col: number; original: string }> = [];
+      const rewriteFormulas = () => {
+        for (const [row, col, data] of [...sheet.cellEntries()]) {
+          if (data.formula === undefined) continue;
+          const rewritten = rewriteFormulaReferences(data.formula, change);
+          if (rewritten === data.formula) continue;
+          rewrites.push({ row, col, original: data.formula });
+          sheet.setCell(row, col, { ...data, formula: rewritten });
+        }
+      };
+      const undoRewrites = () => {
+        for (const r of rewrites) {
+          const cell = sheet.getCell(r.row, r.col);
+          if (cell !== undefined) sheet.setCell(r.row, r.col, { ...cell, formula: r.original });
+        }
+      };
       const emit = (workbook: typeof ctx.workbook, source: typeof ctx.source) => {
         workbook.emit({
           workbookId: workbook.id,
@@ -78,20 +100,31 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
         });
       };
       apply();
+      rewriteFormulas();
       // Freeze stays numerically identical on insert (the frozen pane grows
       // to include the inserted empty rows/cols when inserting above it), so
       // undo does not touch freeze either.
       emit(ctx.workbook, ctx.source);
       const journal: JournalEntry = {
         label: this.id,
-        affected: [{ sheetId: sheet.id, range: FULL_RANGE, kind }],
-        approxBytes: 256,
+        affected: [
+          {
+            sheetId: sheet.id,
+            range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 },
+            kind,
+          },
+        ],
+        approxBytes: 256 + rewrites.length * 96,
         undo: (rctx) => {
+          // Cells are back at their original positions after undoSingle;
+          // restore the original formula sources first.
+          undoRewrites();
           undoSingle();
           emit(rctx.workbook, rctx.source);
         },
         redo: (rctx) => {
           apply();
+          rewriteFormulas();
           emit(rctx.workbook, rctx.source);
         },
       };
@@ -182,6 +215,28 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
           sheet.frozenColumns = prevFreeze;
         }
       };
+      // M3: rewrite formula references for the deletion (refs into deleted
+      // rows/cols become #REF!); undo restores the original source text.
+      const change: StructureChange =
+        axis === "rows"
+          ? { type: "deleteRows", at: payload.at, count }
+          : { type: "deleteColumns", at: payload.at, count };
+      const rewrites: Array<{ row: number; col: number; original: string }> = [];
+      const rewriteFormulas = () => {
+        for (const [row, col, data] of [...sheet.cellEntries()]) {
+          if (data.formula === undefined) continue;
+          const rewritten = rewriteFormulaReferences(data.formula, change);
+          if (rewritten === data.formula) continue;
+          rewrites.push({ row, col, original: data.formula });
+          sheet.setCell(row, col, { ...data, formula: rewritten });
+        }
+      };
+      const undoRewrites = () => {
+        for (const r of rewrites) {
+          const cell = sheet.getCell(r.row, r.col);
+          if (cell !== undefined) sheet.setCell(r.row, r.col, { ...cell, formula: r.original });
+        }
+      };
       const emit = (workbook: typeof ctx.workbook, source: typeof ctx.source) => {
         workbook.emit({
           workbookId: workbook.id,
@@ -197,17 +252,26 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
         });
       };
       apply();
+      rewriteFormulas();
       emit(ctx.workbook, ctx.source);
       const journal: JournalEntry = {
         label: this.id,
-        affected: [{ sheetId: sheet.id, range: FULL_RANGE, kind }],
-        approxBytes: 512 + deletedCells.size * 160 + deletedSizes.size * 32,
+        affected: [
+          {
+            sheetId: sheet.id,
+            range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 },
+            kind,
+          },
+        ],
+        approxBytes: 512 + deletedCells.size * 160 + deletedSizes.size * 32 + rewrites.length * 96,
         undo: (rctx) => {
+          undoRewrites();
           restoreInverse();
           emit(rctx.workbook, rctx.source);
         },
         redo: (rctx) => {
           apply();
+          rewriteFormulas();
           emit(rctx.workbook, rctx.source);
         },
       };

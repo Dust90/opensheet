@@ -7,6 +7,7 @@
 import type { CellValue } from "@opensheet/shared";
 import { isCellError } from "@opensheet/shared";
 import type { CellRangeValue, FormulaArgument } from "./evaluate.js";
+import { finiteNumber } from "./numeric.js";
 
 /** Iterate every value in an argument (scalar → one value; range → lazy). */
 export function* iterateValues(arg: FormulaArgument): Iterable<CellValue> {
@@ -168,7 +169,7 @@ export function createDefaultFunctions(): FunctionRegistry {
   });
 
   registry.register("ABS", (args) => {
-    return Math.abs(toNumber(scalarOf(args[0]!)));
+    return finiteNumber(Math.abs(toNumber(scalarOf(args[0]!))));
   });
 
   registry.register("ROUND", (args) => {
@@ -176,7 +177,7 @@ export function createDefaultFunctions(): FunctionRegistry {
     const b = args.length > 1 ? toNumber(scalarOf(args[1]!)) : 0;
     const digits = Number.isInteger(b) ? b : 0;
     const factor = 10 ** digits;
-    return Math.round(a * factor) / factor;
+    return finiteNumber(Math.round(a * factor) / factor);
   });
 
   registry.register("ROUNDUP", (args) => {
@@ -185,7 +186,7 @@ export function createDefaultFunctions(): FunctionRegistry {
     const digits = Number.isInteger(b) ? b : 0;
     const factor = 10 ** digits;
     const scaled = a * factor;
-    return (scaled < 0 ? -Math.ceil(-scaled) : Math.ceil(scaled)) / factor;
+    return finiteNumber((scaled < 0 ? -Math.ceil(-scaled) : Math.ceil(scaled)) / factor);
   });
 
   registry.register("ROUNDDOWN", (args) => {
@@ -194,24 +195,25 @@ export function createDefaultFunctions(): FunctionRegistry {
     const digits = Number.isInteger(b) ? b : 0;
     const factor = 10 ** digits;
     const scaled = a * factor;
-    return (scaled < 0 ? -Math.floor(-scaled) : Math.floor(scaled)) / factor;
+    return finiteNumber((scaled < 0 ? -Math.floor(-scaled) : Math.floor(scaled)) / factor);
   });
 
   registry.register("INT", (args) => {
-    return Math.floor(toNumber(scalarOf(args[0]!)));
+    return finiteNumber(Math.floor(toNumber(scalarOf(args[0]!))));
   });
 
   registry.register("MOD", (args) => {
     const a = toNumber(scalarOf(args[0]!));
     const b = args.length > 1 ? toNumber(scalarOf(args[1]!)) : 0;
     if (b === 0) return { type: "#DIV/0!", message: "MOD by zero" };
-    return ((a % b) + b) % b;
+    return finiteNumber(((a % b) + b) % b);
   });
 
   registry.register("POWER", (args) => {
     const a = toNumber(scalarOf(args[0]!));
     const b = args.length > 1 ? toNumber(scalarOf(args[1]!)) : 0;
-    return Math.pow(a, b);
+    // Negative base with fractional exponent → NaN → #NUM!.
+    return finiteNumber(Math.pow(a, b));
   });
 
   registry.register("SQRT", (args) => {
