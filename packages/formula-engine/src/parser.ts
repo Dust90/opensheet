@@ -28,6 +28,7 @@ const ERROR_LITERALS: Record<string, Expr> = {
   "#NAME?": { kind: "error", error: { type: "#NAME?" } },
   "#N/A": { kind: "error", error: { type: "#N/A" } },
   "#CYCLE!": { kind: "error", error: { type: "#CYCLE!" } },
+  "#NUM!": { kind: "error", error: { type: "#NUM!" } },
 };
 
 class Parser {
@@ -126,12 +127,13 @@ class Parser {
     return expr;
   }
 
-  /** Right-associative power; -2^2 parses as -(2^2). */
+  /** Right-associative power; -2^2 parses as -(2^2). The exponent side
+   *  accepts a unary prefix so 2^-2 and 2^-n are legal. */
   private parseExponent(): Expr {
     const left = this.parsePrimary();
     if (this.peek().type === "op" && this.peek().value === "^") {
       this.next();
-      const right = this.parseExponent();
+      const right = this.parseUnary();
       return { kind: "binary", op: "^", left, right };
     }
     return left;
@@ -185,6 +187,10 @@ class Parser {
         }
         this.expect("rparen", "')'");
         return { kind: "function", name: name.toUpperCase(), args };
+      }
+      case "error": {
+        this.next();
+        return ERROR_LITERALS[token.value]!;
       }
       case "lparen": {
         this.next();

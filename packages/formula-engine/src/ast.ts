@@ -1,12 +1,18 @@
 // Formula AST (M3.2).
 
-import type { CellValue } from "@opensheet/shared";
+import type { CellAddress, CellValue } from "@opensheet/shared";
 
 export interface CellRef {
   row: number; // 0-based
   col: number; // 0-based
   rowAbs: boolean;
   colAbs: boolean;
+}
+
+/** A range reference as written in the formula (NOT expanded to cells). */
+export interface CellRangeRef {
+  start: CellRef;
+  end: CellRef;
 }
 
 export type Expr =
@@ -21,10 +27,16 @@ export type Expr =
   | { kind: "unary"; op: "-" | "+" | "%" | "!"; operand: Expr }
   | { kind: "binary"; op: string; left: Expr; right: Expr };
 
+export interface FormulaDependencies {
+  /** Individual cell refs (deduplicated). */
+  cells: CellRef[];
+  /** Range refs as written — consumed lazily, never expanded. */
+  ranges: CellRangeRef[];
+}
+
 export interface FormulaParseResult {
   ast: Expr;
-  /** All cell references this formula touches (ranges expanded), for the dependency graph. */
-  dependencies: CellRef[];
+  dependencies: FormulaDependencies;
 }
 
 /** Walk an expression tree, calling `visit` for every node. */
@@ -46,27 +58,45 @@ export function walkExpr(node: Expr, visit: (node: Expr) => void): void {
   }
 }
 
-/** Collect every cell ref (ranges expanded cell-by-cell, deduplicated). */
-export function collectDependencies(node: Expr): CellRef[] {
-  const refs: CellRef[] = [];
+/**
+ * Collect the dependency surface of an AST WITHOUT expanding ranges:
+ * individual cells are deduplicated; range refs are kept as intervals so
+ * huge ranges (A1:A1000000) never allocate per-cell objects.
+ */
+export function collectDependencies(node: Expr): FormulaDependencies {
+  const cells: CellRef[] = [];
   const seen = new Set<string>();
-  const push = (ref: CellRef) => {
-    const key = `${ref.row}:${ref.col}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    refs.push({ ...ref });
-  };
+  const ranges: CellRangeRef[] = [];
   walkExpr(node, (n) => {
-    if (n.kind === "cell") push(n.ref);
-    else if (n.kind === "range") {
-      const r1 = Math.min(n.start.row, n.end.row);
-      const r2 = Math.max(n.start.row, n.end.row);
-      const c1 = Math.min(n.start.col, n.end.col);
-      const c2 = Math.max(n.start.col, n.end.col);
-      for (let r = r1; r <= r2; r++) {
-        for (let c = c1; c <= c2; c++) push({ row: r, col: c, rowAbs: false, colAbs: false });
+    if (n.kind === "cell") {
+      const key = `${n.ref.row}:${n.ref.col}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        cells.push({ ...n.ref });
       }
+    } else if (n.kind === "range") {
+      ranges.push({ start: { ...n.start }, end: { ...n.end } });
     }
   });
-  return refs;
+  return { cells, ranges };
+}
+
+/** Convert a range ref to its normalized bounds (min corner → max corner). */
+export function rangeBounds(range: CellRangeRef): { row1: number; col1: number; row2: number; col2: number } {
+  return {
+    row1: Math.min(range.start.row, range.end.row),
+    col1: Math.min(range.start.col, range.end.col),
+    row2: Math.max(range.start.row, range.end.row),
+    col2: Math.max(range.start.col, range.end.col),
+  };
+}
+
+/** Iterate every cell address inside a range (lazy generator). */
+export function* iterateRange(range: CellRangeRef): Iterable<CellAddress> {
+  const { row1, col1, row2, col2 } = rangeBounds(range);
+  for (let row = row1; row <= row2; row++) {
+    for (let col = col1; col <= col2; col++) {
+      yield { row, col };
+    }
+  }
 }

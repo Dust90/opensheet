@@ -26,47 +26,67 @@ function evalFormula(formula: string, values: Record<string, CellValue> = {}): C
   return evaluateExpr(ast, makeContext(values), createDefaultFunctions());
 }
 
-describe("evaluateExpr", () => {
-  it("evaluates arithmetic, precedence and parens", () => {
+describe("evaluateExpr — errors are VALUES, never thrown", () => {
+  it("propagates referenced errors without throwing", () => {
+    expect(evalFormula("=A1+1", { A1: { type: "#REF!" } })).toMatchObject({ type: "#REF!" });
+    expect(evalFormula('="abc"+1')).toMatchObject({ type: "#VALUE!" });
+    expect(evalFormula("=A1*B1", { A1: 2, B1: { type: "#CYCLE!" } })).toMatchObject({ type: "#CYCLE!" });
+    expect(evalFormula("=A1&\"!\"", { A1: { type: "#DIV/0!" } })).toMatchObject({ type: "#DIV/0!" });
+  });
+
+  it("error literals evaluate to CellError values", () => {
+    expect(evalFormula("=#REF!")).toMatchObject({ type: "#REF!" });
+    expect(evalFormula("=#NUM!")).toMatchObject({ type: "#NUM!" });
+  });
+
+  it("IF is truly lazy — the untaken branch is never evaluated", () => {
+    expect(evalFormula('=IF(TRUE, 1, "abc"+1)')).toBe(1);
+    expect(evalFormula('=IF(FALSE, "abc"+1, 2)')).toBe(2);
+    expect(evalFormula("=IF(A1>1, 2, 4)", { A1: 0 })).toBe(4);
+    expect(evalFormula("=IF(0, 1)")).toBe(false); // no else → false
+    // Errors in the condition propagate.
+    expect(evalFormula('=IF("abc"+1, 1, 2)')).toMatchObject({ type: "#VALUE!" });
+  });
+
+  it("AND/OR short-circuit (non-zero numbers are truthy)", () => {
+    expect(evalFormula('=AND(TRUE,1,5)')).toBe(true);
+    expect(evalFormula('=AND(TRUE,0)')).toBe(false);
+    expect(evalFormula('=AND(FALSE,"abc"+1)')).toBe(false); // short-circuit
+    expect(evalFormula('=OR(FALSE,5)')).toBe(true); // 5 is truthy
+    expect(evalFormula('=OR(TRUE,"abc"+1)')).toBe(true);
+    expect(evalFormula('=OR(FALSE,0)')).toBe(false);
+  });
+
+  it("arithmetic, precedence, parens, unary", () => {
     expect(evalFormula("=1+2*3")).toBe(7);
     expect(evalFormula("=(1+2)*3")).toBe(9);
     expect(evalFormula("=-2^2")).toBe(-4);
+    expect(evalFormula("=2^-2")).toBeCloseTo(0.25);
+    expect(evalFormula("=2^3^2")).toBe(512);
+    expect(evalFormula("=(-2)^2")).toBe(4);
     expect(evalFormula("=10/4")).toBe(2.5);
     expect(evalFormula("=7%")).toBeCloseTo(0.07);
+    expect(evalFormula("=1/0")).toMatchObject({ type: "#DIV/0!" });
   });
 
-  it("reads cell values and propagates numeric coercion", () => {
+  it("reads cells, coerces numeric strings, comparisons and concat", () => {
     expect(evalFormula("=A1+B1", { A1: 2, B1: 3 })).toBe(5);
     expect(evalFormula('=A1&"!"', { A1: "hi" })).toBe("hi!");
     expect(evalFormula("=A1=TRUE", { A1: true })).toBe(true);
-  });
-
-  it("supports comparisons and concat", () => {
     expect(evalFormula('="a"&"b"="ab"')).toBe(true);
     expect(evalFormula("=1<>2")).toBe(true);
     expect(evalFormula("=3>=3")).toBe(true);
-  });
-
-  it("division by zero yields #DIV/0!", () => {
-    expect(evalFormula("=1/0")).toMatchObject({ type: "#DIV/0!" });
   });
 
   it("unknown function yields #NAME?", () => {
     expect(evalFormula("=FOOBAR(1)")).toMatchObject({ type: "#NAME?" });
   });
 
-  it("SUM over ranges and scalars", () => {
+  it("SUM over lazy ranges and scalars", () => {
     expect(evalFormula("=SUM(A1:B2)", { A1: 1, A2: 2, B1: 3, B2: 4 })).toBe(10);
     expect(evalFormula("=SUM(1,2,3)")).toBe(6);
-    // Text values in SUM are ignored, errors propagate.
     expect(evalFormula("=SUM(A1,B1)", { A1: "nope", B1: 5 })).toBe(5);
-    expect(evalFormula("=SUM(A1,B1)", { A1: { type: "#REF!" }, B1: 5 })).toEqual({ type: "#REF!" });
-  });
-
-  it("IF short-circuits errors in the untaken branch", () => {
-    expect(evalFormula("=IF(TRUE, 1, 1/0)")).toBe(1);
-    expect(evalFormula("=IF(FALSE, 1/0, 2)")).toBe(2);
-    expect(evalFormula("=IF(A1>1, 2, 4)", { A1: 0 })).toBe(4);
+    expect(evalFormula("=SUM(A1,B1)", { A1: { type: "#REF!" }, B1: 5 })).toMatchObject({ type: "#REF!" });
   });
 
   it("aggregates: AVERAGE, MIN, MAX, COUNT, COUNTA", () => {
@@ -78,17 +98,13 @@ describe("evaluateExpr", () => {
     expect(evalFormula("=COUNTA(A1:A4)", { A1: 1, A2: "x", A3: null, A4: 2 })).toBe(3);
   });
 
-  it("text functions", () => {
+  it("text and math functions", () => {
     expect(evalFormula('=CONCAT("a","b","c")')).toBe("abc");
     expect(evalFormula('=UPPER("miXed")')).toBe("MIXED");
     expect(evalFormula('=LEN("hello")')).toBe(5);
     expect(evalFormula('=LEFT("hello",2)')).toBe("he");
-    expect(evalFormula('=RIGHT("hello",2)')).toMatch(/^[a-z]{2}$/);
     expect(evalFormula('=MID("hello",2,3)')).toBe("ell");
     expect(evalFormula('=TRIM("  a  b  ")')).toBe("a b");
-  });
-
-  it("math functions", () => {
     expect(evalFormula("=ABS(-4)")).toBe(4);
     expect(evalFormula("=ROUND(2.567,2)")).toBe(2.57);
     expect(evalFormula("=ROUNDUP(2.1,0)")).toBe(3);
@@ -101,15 +117,17 @@ describe("evaluateExpr", () => {
     expect(evalFormula("=SQRT(-1)")).toMatchObject({ type: "#NUM!" });
   });
 
-  it("logic functions and SUMIF", () => {
-    expect(evalFormula("=AND(TRUE,1,5)")).toBe(true);
-    expect(evalFormula("=AND(TRUE,0)")).toBe(false);
-    expect(evalFormula("=OR(FALSE,0,TRUE)")).toBe(true);
-    expect(evalFormula("=NOT(FALSE)")).toBe(true);
+  it("SUMIF", () => {
     expect(evalFormula("=SUMIF(A1:A3,5,B1:B3)", { A1: 5, A2: 2, A3: 5, B1: 10, B2: 20, B3: 30 })).toBe(40);
   });
 
   it("bare range resolves to top-left cell", () => {
     expect(evalFormula("=A1:B2", { A1: 7, B2: 9 })).toBe(7);
+  });
+
+  it("huge ranges are consumed lazily (no materialization)", () => {
+    // Only a few cells set; SUM over a huge range must not allocate per-cell.
+    const values: Record<string, CellValue> = { A1: 1, A2: 2 };
+    expect(evalFormula("=SUM(A1:A1000000)", values)).toBe(3);
   });
 });

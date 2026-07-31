@@ -1,14 +1,54 @@
-// Evaluator (M3.3): AST → CellValue, with a pluggable cell resolver.
+// Evaluator (M3.3/M3.4): AST → CellValue, with a pluggable cell resolver.
 // Pure: no Worksheet access — the host provides values via FormulaContext.
+//
+// M3.4 semantics:
+//   - Errors are VALUES: the public evaluateExpr never throws a CellError;
+//     it returns it. (An uncaught programming error still propagates.)
+//   - IF/AND/OR are SPECIAL FORMS evaluated lazily: the untaken branch is
+//     never evaluated at all.
+//   - Ranges are LAZY: range arguments are passed as iterable views, never
+//     expanded to per-cell arrays.
 
-import type { CellRef, Expr } from "./ast.js";
-import type { CellValue } from "@opensheet/shared";
+import type { CellRangeRef, CellRef, Expr } from "./ast.js";
+import { iterateRange, rangeBounds } from "./ast.js";
+import type { CellAddress, CellValue } from "@opensheet/shared";
 import { isCellError, type CellError } from "@opensheet/shared";
-import { FunctionRegistry, type ScalarArg } from "./functions.js";
+import { FunctionRegistry } from "./functions.js";
 
 export interface FormulaContext {
   /** Read a single cell's value (errors are values, not exceptions). */
   getCellValue(ref: CellRef): CellValue;
+}
+
+/** Lazy iterable view over a range of cell values (no array materialization). */
+export interface CellRangeValue {
+  readonly kind: "range";
+  values(): Iterable<CellValue>;
+  addresses(): Iterable<CellAddress>;
+}
+
+export type FormulaArgument = CellValue | CellRangeValue;
+
+function makeRangeValue(range: CellRangeRef, ctx: FormulaContext): CellRangeValue {
+  return {
+    kind: "range",
+    *values() {
+      for (const address of iterateRange(range)) {
+        yield ctx.getCellValue({ row: address.row, col: address.col, rowAbs: false, colAbs: false });
+      }
+    },
+    addresses: () => iterateRange(range),
+  };
+}
+
+function isErrorLike(value: unknown): value is CellError {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof (value as { type: unknown }).type === "string" &&
+    ((value as { type: string }).type.startsWith("#") || (value as { type: string }).type.endsWith("!"))
+  );
 }
 
 function isTruthy(value: CellValue): boolean {
@@ -59,11 +99,9 @@ function toText(value: CellValue): string {
   return String(value);
 }
 
-/**
- * Evaluate a parsed AST. Errors surface as CellError VALUES (except inside
- * control-flow functions like IF where the unevaluated branch never runs).
- */
-export function evaluateExpr(expr: Expr, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
+// --- internal evaluator (may throw CellError for propagation) --------------
+
+function evaluateInternal(expr: Expr, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
   switch (expr.kind) {
     case "number":
       return expr.value;
@@ -79,16 +117,11 @@ export function evaluateExpr(expr: Expr, ctx: FormulaContext, registry: Function
       return ctx.getCellValue(expr.ref);
     case "range": {
       // A bare range in a scalar position: Excel returns the top-left cell.
-      const topLeft: CellRef = {
-        row: Math.min(expr.start.row, expr.end.row),
-        col: Math.min(expr.start.col, expr.end.col),
-        rowAbs: false,
-        colAbs: false,
-      };
-      return ctx.getCellValue(topLeft);
+      const { row1, col1 } = rangeBounds({ start: expr.start, end: expr.end });
+      return ctx.getCellValue({ row: row1, col: col1, rowAbs: false, colAbs: false });
     }
     case "unary": {
-      const operand = evaluateExpr(expr.operand, ctx, registry);
+      const operand = evaluateInternal(expr.operand, ctx, registry);
       switch (expr.op) {
         case "-":
           return -toNum(operand);
@@ -104,34 +137,45 @@ export function evaluateExpr(expr: Expr, ctx: FormulaContext, registry: Function
     }
     case "binary":
       return evaluateBinary(expr.op, expr.left, expr.right, ctx, registry);
-    case "function": {
-      if (registry.has(expr.name)) {
-        const impl = registry.get(expr.name);
-        const args: ScalarArg[][] = expr.args.map((arg) => {
-          if (arg.kind === "range") {
-            return expandRange(arg.start, arg.end, ctx);
-          }
-          return [evaluateExpr(arg, ctx, registry)];
-        });
-        return impl(args);
-      }
-      return { type: "#NAME?", message: `Unknown function: ${expr.name}` };
-    }
+    case "function":
+      return evaluateFunction(expr, ctx, registry);
   }
 }
 
-function expandRange(start: CellRef, end: CellRef, ctx: FormulaContext): ScalarArg[] {
-  const r1 = Math.min(start.row, end.row);
-  const r2 = Math.max(start.row, end.row);
-  const c1 = Math.min(start.col, end.col);
-  const c2 = Math.max(start.col, end.col);
-  const out: ScalarArg[] = [];
-  for (let r = r1; r <= r2; r++) {
-    for (let c = c1; c <= c2; c++) {
-      out.push(ctx.getCellValue({ row: r, col: c, rowAbs: false, colAbs: false }));
+function evaluateFunction(expr: Extract<Expr, { kind: "function" }>, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
+  const name = expr.name;
+  // Special forms — lazy evaluation, args evaluated ONLY on the taken path.
+  if (name === "IF") {
+    if (expr.args.length < 2 || expr.args.length > 3) {
+      return { type: "#VALUE!", message: "IF needs 2-3 arguments" };
     }
+    const condition = isTruthy(evaluateInternal(expr.args[0]!, ctx, registry));
+    if (condition) return evaluateInternal(expr.args[1]!, ctx, registry);
+    if (expr.args.length >= 3) return evaluateInternal(expr.args[2]!, ctx, registry);
+    return false;
   }
-  return out;
+  if (name === "AND") {
+    for (const arg of expr.args) {
+      if (!isTruthy(evaluateInternal(arg, ctx, registry))) return false;
+    }
+    return true;
+  }
+  if (name === "OR") {
+    for (const arg of expr.args) {
+      if (isTruthy(evaluateInternal(arg, ctx, registry))) return true;
+    }
+    return false;
+  }
+  // Ordinary functions: evaluate every argument; ranges stay lazy.
+  if (!registry.has(name)) {
+    return { type: "#NAME?", message: `Unknown function: ${name}` };
+  }
+  const impl = registry.get(name);
+  const args: FormulaArgument[] = expr.args.map((arg) => {
+    if (arg.kind === "range") return makeRangeValue({ start: arg.start, end: arg.end }, ctx);
+    return evaluateInternal(arg, ctx, registry);
+  });
+  return impl(args);
 }
 
 function evaluateBinary(
@@ -141,12 +185,8 @@ function evaluateBinary(
   ctx: FormulaContext,
   registry: FunctionRegistry,
 ): CellValue {
-  // Short-circuit boolean logic: errors in the untaken branch must not leak.
-  if (op === "&&") return isTruthy(evaluateExpr(leftExpr, ctx, registry)) && isTruthy(evaluateExpr(rightExpr, ctx, registry));
-  if (op === "||") return isTruthy(evaluateExpr(leftExpr, ctx, registry)) || isTruthy(evaluateExpr(rightExpr, ctx, registry));
-
-  const left = evaluateExpr(leftExpr, ctx, registry);
-  const right = evaluateExpr(rightExpr, ctx, registry);
+  const left = evaluateInternal(leftExpr, ctx, registry);
+  const right = evaluateInternal(rightExpr, ctx, registry);
 
   switch (op) {
     case "=":
@@ -178,5 +218,22 @@ function evaluateBinary(
       return Math.pow(toNum(left), toNum(right));
     default:
       return { type: "#VALUE!", message: `Unsupported operator ${op}` };
+  }
+}
+
+// --- public boundary -------------------------------------------------------
+
+/**
+ * Evaluate a parsed AST. NEVER throws a CellError: propagated errors are
+ * returned as values. Programming bugs and SheetErrors still propagate.
+ */
+export function evaluateExpr(expr: Expr, ctx: FormulaContext, registry: FunctionRegistry): CellValue {
+  try {
+    return evaluateInternal(expr, ctx, registry);
+  } catch (error) {
+    if (isErrorLike(error) && isCellError(error as CellError)) {
+      return error as CellError;
+    }
+    throw error;
   }
 }

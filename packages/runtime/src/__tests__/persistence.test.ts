@@ -285,6 +285,60 @@ describe("createPersistence", () => {
     expect(make({ "0:0": { value: "x", styleId: true } })).toBe(false);
     expect(make({ "0:0": { value: "x", numberFormat: {} } })).toBe(false);
     expect(make({ "0:0": "not-an-object" })).toBe(false);
+    // Numbers must be finite.
+    expect(make({ "0:0": { value: NaN } })).toBe(false);
+    expect(make({ "0:0": { value: Infinity } })).toBe(false);
+  });
+
+  it("M2.9b: styleId must reference an existing style; styles are validated", () => {
+    const base = {
+      version: WORKBOOK_SNAPSHOT_VERSION,
+      id: "wb",
+      name: "n",
+      activeSheetId: "s",
+      styles: {},
+    };
+    const full = {
+      id: "s",
+      name: "S",
+      rowCount: 10,
+      columnCount: 5,
+      cells: {},
+      rowHeights: {},
+      columnWidths: {},
+      frozenRows: 0,
+      frozenColumns: 0,
+    };
+    const make = (cells: Record<string, unknown>, styles: Record<string, unknown>) =>
+      validateSnapshot({ ...base, styles, sheets: [{ ...full, cells }] });
+
+    // styleId must exist in styles.
+    expect(make({ "0:0": { value: "x", styleId: "s1" } }, { s1: { bold: true } })).toBe(true);
+    expect(make({ "0:0": { value: "x", styleId: "missing" } }, {})).toBe(false);
+
+    // Style field validation.
+    expect(make({}, { s1: { bold: true, italic: false } })).toBe(true);
+    expect(make({}, { s1: { bold: "yes" } })).toBe(false); // non-boolean
+    expect(make({}, { s1: { fontSize: 14 } })).toBe(true);
+    expect(make({}, { s1: { fontSize: -3 } })).toBe(false); // non-positive
+    expect(make({}, { s1: { fontSize: NaN } })).toBe(false);
+    expect(make({}, { s1: { textColor: 42 } })).toBe(false); // non-string
+    expect(make({}, { s1: { horizontalAlign: "center" } })).toBe(true);
+    expect(make({}, { s1: { horizontalAlign: "justify" } })).toBe(false); // bad enum
+    expect(make({}, { s1: { verticalAlign: "middle" } })).toBe(true);
+    expect(make({}, { s1: { verticalAlign: "top-right" } })).toBe(false);
+    expect(make({}, { s1: { border: { top: { style: "thin", color: "#000" } } } })).toBe(true);
+    expect(make({}, { s1: { border: { top: { style: "fat" } } } })).toBe(false); // bad border style
+    expect(make({}, { s1: { border: { top: "thin" } } })).toBe(false); // edge not an object
+    expect(make({}, { s1: null })).toBe(false); // style must be an object
+    expect(make({}, { s1: [] })).toBe(false); // not an array
+    expect(make({}, { s1: { border: { top: { style: "thin", color: 1 } } } })).toBe(false);
+
+    // Canonical keys: leading zeros are coordinate aliases and must be rejected.
+    expect(make({ "00:0": { value: 1 } }, {})).toBe(false);
+    expect(make({ "0:05": { value: 1 } }, {})).toBe(false);
+    expect(make({ "0:0": { value: 1 } }, {})).toBe(true);
+    expect(make({}, {})).toBe(true);
   });
 
   it("M2.9: validate-true implies loadable (property test)", () => {

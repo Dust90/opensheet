@@ -18,6 +18,7 @@ export type TokenType =
   | "cell"
   | "bool"
   | "null"
+  | "error" // #REF! / #VALUE! / #DIV/0! / #NAME? / #N/A / #CYCLE! / #NUM!
   | "op"
   | "lparen"
   | "rparen"
@@ -35,6 +36,16 @@ const TWO_CHAR_OPS = new Set(["<=", ">=", "<>"]);
 const ONE_CHAR_OPS = new Set(["+", "-", "*", "/", "^", "%", "&", "=", "<", ">", "(", ")", ",", ":"]);
 
 const CELL_RE = /^\$?[A-Za-z]{1,3}\$?\d+$/;
+
+const ERROR_LITERALS = new Set([
+  "#REF!",
+  "#VALUE!",
+  "#DIV/0!",
+  "#NAME?",
+  "#N/A",
+  "#CYCLE!",
+  "#NUM!",
+]);
 
 function isCellToken(text: string): boolean {
   if (!CELL_RE.test(text)) return false;
@@ -56,6 +67,19 @@ export function tokenize(input: string): Token[] {
       continue;
     }
     const pos = i;
+    // Error literal: #REF! / #NAME? / ...
+    if (ch === "#") {
+      let j = i + 1;
+      while (j < input.length && /[A-Z0-9/?]/.test(input[j]!)) j++;
+      if (j < input.length && input[j] === "!") j++;
+      const raw = input.slice(i, j);
+      if (!ERROR_LITERALS.has(raw)) {
+        throw new SheetError("E_FORMULA_SYNTAX", `Unknown error literal "${raw}" at position ${pos}`);
+      }
+      tokens.push({ type: "error", value: raw, pos });
+      i = j;
+      continue;
+    }
     // Number
     if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(input[i + 1] ?? ""))) {
       let j = i;
