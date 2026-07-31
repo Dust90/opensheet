@@ -529,8 +529,9 @@ describe("M3.7 guardrail: transaction total budget exhaustion", () => {
     const sheetId = wb.activeSheetId;
 
     // ONE atomic transaction carrying both formulas. B1 = SUM(A1:A3) consumes
-    // 4 reads — exactly the shared transaction budget; C1 = B1*2 is evaluated
-    // after B1 (dependency order) and finds the budget exhausted.
+    // 4 evaluation budget units (3 cell reads + 1 range-node unit) — exactly
+    // the shared transaction budget; C1 = B1*2 is evaluated after B1
+    // (dependency order) and finds the budget exhausted.
     const result = await api.applyOperations({
       workbookId: wb.id, sheetId, atomic: true,
       operations: [
@@ -545,6 +546,8 @@ describe("M3.7 guardrail: transaction total budget exhaustion", () => {
     expect(result.status).toBe("completed");
 
     // First formula consumed exactly the shared budget and succeeded.
+    // NOTE: `maxCellReadsPerTransaction` counts evaluation budget units
+    // (cell reads + range/AST overhead), not purely cell reads.
     expect(api.readRange({ sheetId, range: "B1" })[0]![0]).toBe(6);
 
     // Second formula exceeds the TRANSACTION budget (its own budget is fine).

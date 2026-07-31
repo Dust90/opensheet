@@ -88,13 +88,20 @@ range.sort 与 range.dedupe 若和筛选范围重叠 → 拒绝（原子拒绝�
 ## 契约校验
 
 `data-operations.ts` 导出 `validateSortSpec` / `validateFilterSpec` /
-`validateDedupeSpec` / `validateFindOptions`：
+`validateDedupeSpec` / `validateFindOptions`。M4.0.1 起校验器接受 `unknown`
+并以断言签名收窄类型（SDK、插件、Snapshot JSON 不受 TypeScript 保护）：
 
-- Range 必须是归一化（start ≤ end）的非负整数；
+- 输入必须是普通对象，非法输入抛 `SheetError`，绝不抛原生 `TypeError`；
+- Range 必须是归一化（start ≤ end）的非负**安全整数**（`Number.isSafeInteger`）；
 - `columnOffset` 是**相对 range.startCol 的偏移**（不是绝对列号），必须落在 range 宽度内；
-- Sort 至少一个 key；Filter 至少一个 condition；
-- 除 `isBlank` / `notBlank` 外的筛选运算符必须携带 `value`；
-- Find 的 `query` 不允许为空字符串。
+- Sort 至少一个 key 且不允许重复 `columnOffset`；`direction` 枚举校验；`locale` 存在时必须非空字符串；
+- Filter 至少一个 condition；`operator` 枚举校验；`caseSensitive` 必须 boolean；
+  除 `isBlank` / `notBlank` 外必须携带 `value`，且 `value` 必须是有限数、字符串、布尔或 `null`；
+- Dedupe 的 `keep` 必须严格等于 `"first"`；Key 偏移不允许重复；
+- Find 的 `query` 必须非空字符串，三个枚举字段（`searchIn`/`scope`/`direction`）逐一校验。
+
+枚举类型全部由常量元组派生（`SORT_DIRECTIONS`、`FILTER_OPERATORS`、`FIND_*`），
+类型与运行时校验不会漂移。
 
 ## Snapshot
 

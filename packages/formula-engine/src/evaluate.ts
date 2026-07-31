@@ -23,10 +23,15 @@ export interface FormulaContext {
 
 /**
  * Deterministic evaluation budget (M3.5 guardrail): a single formula may
- * read at most `maxCellReads` cells; the whole transaction budget is
- * enforced by the host sharing one budget across formulas. Exceeding the
- * limit yields #VALUE! instead of blocking the main thread for millions of
- * iterations.
+ * consume at most `maxCellReads` evaluation budget units; the whole
+ * transaction budget is enforced by the host sharing one budget across
+ * formulas. Exceeding the limit yields #VALUE! instead of blocking the main
+ * thread for millions of iterations.
+ *
+ * NOTE on naming: one "unit" is not always one cell read — range nodes and
+ * other AST overhead also consume units (e.g. SUM(A1:A3) costs 4, not 3).
+ * A future split into `maxCellReads` + `maxOperations` may refine this; the
+ * current semantics safely prevent runaway evaluation.
  */
 export interface EvaluationBudget {
   maxCellReads: number;
