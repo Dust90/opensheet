@@ -1,0 +1,2 @@
+// @opensheet/plugin-api
+export {};

@@ -1,0 +1,2 @@
+// @opensheet/clipboard
+export {};
