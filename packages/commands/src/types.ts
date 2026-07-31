@@ -1,7 +1,7 @@
 // Command + journal contracts (inverse patch journal, ADR-0003).
 
 import type { Workbook } from "@opensheet/core";
-import type { ChangeKind, ChangeSource, Range } from "@opensheet/shared";
+import type { CellData, ChangeKind, ChangeSource, Range } from "@opensheet/shared";
 
 /** Minimal context available while undoing/redoing journal entries. */
 export interface JournalReplayContext {
@@ -56,7 +56,24 @@ export interface HistorySink {
   push(batch: JournalBatch): void;
 }
 
+/**
+ * Transaction-scoped writer for derived (recalculated) values. Every write:
+ * captures the previous value, applies the change, emits a "derived" event
+ * into the transaction buffer, AND appends an inverse patch to the current
+ * transaction's rollback journal. Derived patches are used for rollback only
+ * — they never enter user Undo history (recomputed naturally instead).
+ */
+export interface DerivedWriter {
+  setCell(sheetId: string, row: number, col: number, data: CellData): void;
+  clearCell(sheetId: string, row: number, col: number): void;
+}
+
 /** Runs inside the open transaction, right before commit (ADR-0003).
  *  The formula engine (M3) hooks here to fold derived recalculation results
- *  into the same merged change event. */
-export type BeforeCommitHook = (ctx: { workbook: Workbook; source: ChangeSource }) => void;
+ *  into the same merged change event. Hooks MUST write through `derived` —
+ *  direct workbook writes are untracked and will not roll back on failure. */
+export type BeforeCommitHook = (ctx: {
+  workbook: Workbook;
+  source: ChangeSource;
+  derived: DerivedWriter;
+}) => void;

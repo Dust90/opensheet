@@ -1,0 +1,58 @@
+{
+  "env": {
+    "date": "2026-07-31T03:48:17.620Z",
+    "node": "v22.22.2",
+    "platform": "darwin x64",
+    "scenario": "100,000 rows x 20 cols = 2,000,000 non-empty cells"
+  },
+  "results": [
+    {
+      "impl": "string-key",
+      "cells": 2000000,
+      "writeMs": 2621.9,
+      "randomReadMs": 1060.6,
+      "rangeIterateMs": 327.1,
+      "serializeMs": 3887.6,
+      "rssMB": 243.8,
+      "heapUsedMB": 167.2,
+      "sanity": {
+        "hits": 1000000,
+        "visited": 2000000,
+        "keys": 2000000
+      },
+      "node": "v22.22.2"
+    },
+    {
+      "impl": "number-key",
+      "cells": 2000000,
+      "writeMs": 2548.1,
+      "randomReadMs": 589.4,
+      "rangeIterateMs": 652.6,
+      "serializeMs": 3681.9,
+      "rssMB": 219.8,
+      "heapUsedMB": 151.3,
+      "sanity": {
+        "hits": 1000000,
+        "visited": 2000000,
+        "keys": 2000000
+      },
+      "node": "v22.22.2"
+    },
+    {
+      "impl": "chunked",
+      "cells": 2000000,
+      "writeMs": 904.8,
+      "randomReadMs": 422.8,
+      "rangeIterateMs": 63.6,
+      "serializeMs": 3717.3,
+      "rssMB": 223.7,
+      "heapUsedMB": 150.9,
+      "sanity": {
+        "hits": 1000000,
+        "visited": 2000000,
+        "keys": 2000000
+      },
+      "node": "v22.22.2"
+    }
+  ]
+}

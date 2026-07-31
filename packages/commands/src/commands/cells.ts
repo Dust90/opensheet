@@ -168,9 +168,12 @@ export const rangeWriteCommand: SheetCommand<{ range: string; values: CellPrimit
     const range = parseRange(payload.range);
     const sheet = ctx.workbook.getSheet(ctx.sheetId);
     assertRangeInSheet(range, sheet);
+    // Normalize/clone rule: journal closures must never reference caller-owned
+    // payloads — later mutations by the caller would corrupt redo.
+    const values = payload.values.map((row) => [...row]);
     const captured = captureCells(sheet, range);
     const apply = () => {
-      payload.values.forEach((rowValues, r) => {
+      values.forEach((rowValues, r) => {
         rowValues.forEach((value, c) => {
           sheet.setCell(range.startRow + r, range.startCol + c, { value });
         });

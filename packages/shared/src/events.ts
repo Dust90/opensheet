@@ -26,8 +26,10 @@ export interface CellChange {
 
 /**
  * A single atomic notification. During a transaction all intermediate
- * emissions are buffered and merged into ONE event on commit; observers
- * never see intermediate transaction state.
+ * emissions are buffered; on commit, observers receive at most ONE merged
+ * event per (workbook + sheet + source) — e.g. a user write plus a derived
+ * recalculation yields two events, one per source. Observers never see
+ * intermediate transaction state.
  */
 export interface ChangeEvent {
   workbookId: string;

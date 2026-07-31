@@ -25,10 +25,27 @@ const ALLOWED = new Set([
   "UNLICENSE",
   "PYTHON-2.0", // argparse-style, permissive
   "BLUEOAK-1.0.0", // Blue Oak Model License, permissive
-  // Reviewed exceptions (transitive, build-time only, unmodified):
-  "CC-BY-4.0", // caniuse-lite: data file (browser support DB), not code
-  "MPL-2.0", // lightningcss: weak file-level copyleft; allowed when used unmodified as a tool dependency
 ]);
+
+/**
+ * PACKAGE-LEVEL exceptions, reviewed individually (build-time, transitive,
+ * used unmodified). A license outside ALLOWED passes ONLY for the exact
+ * package listed here — any other package with the same license still fails.
+ * - caniuse-lite (CC-BY-4.0): data file (browser support DB), not code.
+ * - lightningcss (MPL-2.0): weak file-level copyleft, Vite CSS minifier tool.
+ */
+const PACKAGE_EXCEPTIONS = new Map([
+  ["caniuse-lite", "CC-BY-4.0"],
+  // Exact package plus its per-platform binary packages (lightningcss-darwin-x64, ...).
+  ["lightningcss", "MPL-2.0"],
+]);
+
+function findException(pkgName) {
+  for (const [name, license] of PACKAGE_EXCEPTIONS) {
+    if (pkgName === name || pkgName.startsWith(`${name}-`)) return license;
+  }
+  return undefined;
+}
 
 const BLOCKED = /GPL|AGPL|SSPL|BUSL|COMMONS[- ]CLAUSE|UNKNOWN/i;
 
@@ -91,7 +108,14 @@ for (const dirEntry of readdirSync(PNPM_STORE)) {
       const license = normalizeLicense(pkg);
       checked.set(id, license);
       if (!isAllowed(license)) {
-        violations.push({ id, license });
+        const pkgName = pkg.name ?? name;
+        const exceptionLicense = findException(pkgName);
+        const isExcepted =
+          exceptionLicense !== undefined &&
+          license.toUpperCase().includes(exceptionLicense.toUpperCase());
+        if (!isExcepted) {
+          violations.push({ id, license });
+        }
       }
     }
   }
@@ -102,7 +126,8 @@ if (violations.length > 0) {
   console.error(`\n${violations.length} license violation(s):`);
   for (const v of violations) console.error(`  ✗ ${v.id} — ${v.license}`);
   console.error(
-    "\nAllowed: MIT, ISC, Apache-2.0, BSD-2/3-Clause, 0BSD, CC0-1.0, Unlicense, Python-2.0, BlueOak-1.0.0, CC-BY-4.0 (data), MPL-2.0 (build tools)",
+    "\nAllowed: MIT, ISC, Apache-2.0, BSD-2/3-Clause, 0BSD, CC0-1.0, Unlicense, Python-2.0, BlueOak-1.0.0",
+    "\nPackage-level exceptions: caniuse-lite (CC-BY-4.0, data), lightningcss (MPL-2.0, build tool)",
   );
   process.exit(1);
 }

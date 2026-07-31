@@ -59,5 +59,5 @@ interface ChangeEvent {
 }
 ```
 
-- 事务内事件缓冲，提交时按 `sheetId + source` 合并为单条事件（渲染器据此计算 Dirty Region）。
+- 事务内事件缓冲，提交时按 `sheetId + source` 合并（每个 sheet+source 至多一条；普通写入 + derived 重算会产生两条），渲染器据此计算 Dirty Region。
 - `derived` 事件只来自公式重算，永不进入 Undo 历史。

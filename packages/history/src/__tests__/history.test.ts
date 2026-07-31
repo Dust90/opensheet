@@ -84,4 +84,33 @@ describe("HistoryManager", () => {
     expect(history.undo(bus)).toBe(false);
     expect(history.redo(bus)).toBe(false);
   });
+
+  it("failed undo replay keeps both stacks and byte accounting intact", () => {
+    const workbook = new Workbook({ id: "wb", name: "B" });
+    workbook.addSheet(new Worksheet({ id: "s1", name: "S1", rowCount: 10, columnCount: 5 }));
+    const history = new HistoryManager();
+    const bus = new CommandBus(workbook, { history, registry: createDefaultRegistry() });
+
+    history.push({
+      entries: [
+        {
+          label: "exploding",
+          affected: [],
+          approxBytes: 100,
+          undo: () => {
+            throw new Error("replay exploded");
+          },
+          redo: () => {},
+        },
+      ],
+      source: "user",
+      approxBytes: 100,
+    });
+    const bytesBefore = history.retainedBytes;
+
+    expect(() => history.undo(bus)).toThrow("replay exploded");
+    expect(history.undoDepth).toBe(1); // entry NOT lost
+    expect(history.canRedo).toBe(false); // and NOT moved to redo
+    expect(history.retainedBytes).toBe(bytesBefore);
+  });
 });

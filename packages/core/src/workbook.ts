@@ -3,6 +3,7 @@
 import type { ChangeEvent, ChangeListener, Unsubscribe } from "@opensheet/shared";
 import { SheetError } from "@opensheet/shared";
 import { StyleTable } from "./styles.js";
+import type { WorksheetView } from "./view.js";
 import { Worksheet } from "./worksheet.js";
 
 export interface WorkbookInit {
@@ -14,14 +15,21 @@ export interface WorkbookInit {
  * Event semantics (transaction boundary, see ADR-0003):
  * - Outside a batch, emit() dispatches immediately.
  * - Inside beginBatch(), emissions accumulate.
- * - endBatch(true)  → listeners receive exactly ONE merged event per sheet.
+ * - endBatch(true)  → at most ONE merged event per (sheet + source) is dispatched.
  * - endBatch(false) → buffer is discarded; observers saw nothing.
+ * Listener exceptions are isolated via onListenerError and never affect commits.
  */
 export class Workbook {
   readonly id: string;
   name: string;
   version = 1;
   readonly styles = new StyleTable();
+
+  /**
+   * Called when a change listener throws. Listener failures NEVER affect
+   * transaction outcomes — data stays committed and history is written.
+   */
+  onListenerError: ((error: unknown, event: ChangeEvent) => void) | undefined;
 
   private sheets: Worksheet[] = [];
   private activeId = "";
@@ -53,6 +61,11 @@ export class Workbook {
       throw new SheetError("E_SHEET_NOT_FOUND", `Sheet not found: "${sheetId}"`);
     }
     return sheet;
+  }
+
+  /** Read-only sheet access for consumers outside the command path. */
+  getSheetView(sheetId: string): WorksheetView {
+    return this.getSheet(sheetId).asView();
   }
 
   addSheet(sheet: Worksheet): void {
@@ -117,7 +130,14 @@ export class Workbook {
   }
 
   private dispatch(event: ChangeEvent): void {
-    for (const listener of this.listeners) listener(event);
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        // Isolated: a broken observer must not corrupt commit/history.
+        this.onListenerError?.(error, event);
+      }
+    }
   }
 }
 

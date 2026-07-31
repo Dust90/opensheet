@@ -87,6 +87,15 @@ describe("style table", () => {
     expect(a).not.toBe(c);
     expect(table.size).toBe(2);
   });
+
+  it("toJSON returns a deep copy (callers cannot mutate internal styles)", () => {
+    const table = new StyleTable();
+    const id = table.register({ bold: true, border: { top: { style: "thin" } } });
+    const json = table.toJSON();
+    json[id]!.bold = false;
+    json[id]!.border!.top!.style = "thick";
+    expect(table.get(id)).toEqual({ bold: true, border: { top: { style: "thin" } } });
+  });
 });
 
 describe("snapshot", () => {

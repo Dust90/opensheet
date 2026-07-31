@@ -91,28 +91,20 @@ describe("atomic transactions", () => {
 });
 
 describe("derived (beforeCommit) channel", () => {
-  it("hook output merges into the same single event and never enters history", () => {
+  it("hook output merges into the same commit and never enters history", () => {
     const { workbook, history, bus, events } = setup();
-    // Simulates the M3 formula engine: recompute B1 = A1 before commit.
-    bus.addBeforeCommitHook(({ workbook: wb }) => {
-      const sheet = wb.getSheet("s1");
-      const source = sheet.getCell(0, 0)?.value;
+    // Simulates the M3 formula engine: recompute B1 = A1*2 before commit.
+    bus.addBeforeCommitHook(({ workbook: wb, derived }) => {
+      const source = wb.getSheet("s1").getCell(0, 0)?.value;
       if (typeof source === "number") {
-        sheet.setCell(0, 1, { value: source * 2, formula: "=A1*2" });
-        wb.emit({
-          workbookId: wb.id,
-          sheetId: "s1",
-          changes: [{ range: { startRow: 0, startCol: 1, endRow: 0, endCol: 1 }, kind: "cells" }],
-          source: "derived",
-          batch: false,
-        });
+        derived.setCell("s1", 0, 1, { value: source * 2, formula: "=A1*2" });
       }
     });
 
     bus.execute("cell.set", { range: "A1", value: 21 }, { sheetId: "s1" });
 
     expect(workbook.getSheet("s1").getCell(0, 1)?.value).toBe(42);
-    // One user event + one derived event (merged per source) — no intermediate emissions.
+    // One user event + one derived event (merged per sheet+source).
     expect(events).toHaveLength(2);
     expect(events.map((e) => e.source).sort()).toEqual(["derived", "user"]);
     expect(history.undoDepth).toBe(1); // derived never recorded
@@ -137,6 +129,78 @@ describe("derived (beforeCommit) channel", () => {
     expect(hookCalls).toBe(0);
     expect(events).toHaveLength(0);
   });
+
+  it("hook throws AFTER writing derived changes: everything rolls back (commands + derived)", () => {
+    const { workbook, history, bus, events } = setup();
+    bus.execute("cell.set", { range: "A1", value: "keep" }, { sheetId: "s1" });
+    events.length = 0;
+    const historyDepthBefore = history.undoDepth;
+    const before = JSON.stringify(toWorkbookSnapshot(workbook));
+
+    bus.addBeforeCommitHook(({ derived }) => {
+      derived.setCell("s1", 0, 1, { value: 999 }); // derived write happens first...
+      throw new Error("recalc exploded"); // ...then the hook fails
+    });
+
+    try {
+      bus.applyOperations({
+        sheetId: "s1",
+        atomic: true,
+        operations: [
+          { type: "cell.set", range: "C1", value: 1 },
+          { type: "cell.set", range: "C2", value: 2 },
+        ],
+      });
+      expect.unreachable("transaction should have failed in the hook");
+    } catch {
+      // expected
+    }
+
+    expect(events).toHaveLength(0); // nothing leaked
+    expect(history.undoDepth).toBe(historyDepthBefore); // no history
+    expect(JSON.stringify(toWorkbookSnapshot(workbook))).toBe(before); // derived write rolled back too
+  });
+});
+
+describe("observer failure isolation", () => {
+  it("a throwing listener does NOT affect commit, history, or later commands", () => {
+    const { workbook, history, bus } = setup();
+    const errors: unknown[] = [];
+    workbook.onListenerError = (error) => errors.push(error);
+    workbook.onChange(() => {
+      throw new Error("renderer exploded");
+    });
+
+    // Command still succeeds, data is committed, history is written.
+    bus.execute("cell.set", { range: "A1", value: "v" }, { sheetId: "s1" });
+    expect(workbook.getSheet("s1").getCell(0, 0)?.value).toBe("v");
+    expect(history.undoDepth).toBe(1);
+    expect(errors).toHaveLength(1);
+
+    // Batch state is clean: later commands and undo still work.
+    bus.execute("cell.set", { range: "A2", value: "w" }, { sheetId: "s1" });
+    expect(workbook.getSheet("s1").getCell(1, 0)?.value).toBe("w");
+    history.undo(bus);
+    expect(workbook.getSheet("s1").getCell(1, 0)).toBeUndefined();
+    expect(errors.length).toBeGreaterThanOrEqual(3); // each event delivery isolated
+  });
+});
+
+describe("sheet lifecycle", () => {
+  it("sheet.create undo/redo restores the previously active sheet", () => {
+    const { workbook, history, bus } = setup();
+    bus.execute("sheet.create", { name: "Second", rows: 50, columns: 10 }, { source: "user" });
+    const secondId = workbook.activeSheetId;
+    expect(workbook.listSheets().map((s) => s.name)).toEqual(["S1", "Second"]);
+
+    history.undo(bus);
+    expect(workbook.listSheets().map((s) => s.name)).toEqual(["S1"]);
+    expect(workbook.activeSheetId).toBe("s1"); // restored, not just "first sheet"
+
+    history.redo(bus);
+    expect(workbook.listSheets().map((s) => s.name)).toEqual(["S1", "Second"]);
+    expect(workbook.activeSheetId).toBe(secondId);
+  });
 });
 
 describe("command → core → event → dirty ranges pipeline", () => {
@@ -147,6 +211,19 @@ describe("command → core → event → dirty ranges pipeline", () => {
     expect(events[0]!.changes).toEqual([
       { range: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 }, kind: "cells" },
     ]);
+  });
+
+  it("range.write redo uses a cloned payload (caller mutation cannot corrupt redo)", () => {
+    const { workbook, history, bus } = setup();
+    const values = [["a", "b"]];
+    bus.execute("range.write", { range: "A1:B1", values }, { sheetId: "s1" });
+    values[0]![0] = "MUTATED"; // caller mutates after execution
+
+    history.undo(bus);
+    expect(workbook.getSheet("s1").getCell(0, 0)).toBeUndefined();
+
+    history.redo(bus);
+    expect(workbook.getSheet("s1").getCell(0, 0)?.value).toBe("a"); // not "MUTATED"
   });
 
   it("undo/redo replay through journal restores state and emits source=undo/redo", () => {

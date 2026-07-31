@@ -12,7 +12,7 @@
 
 `pnpm bench:cell-store`：每个候选在**独立 node 进程**运行（`--expose-gc --max-old-space-size=6144`），避免 GC 状态互相污染。测量写入 2M 单元格、100 万次确定性随机读、全 Range 遍历、Snapshot 式序列化耗时，以及 GC 后 RSS / heapUsed。该 benchmark 不属于常规 CI。
 
-原始数据：`test-results/cell-store-benchmark.json`。
+原始数据：`docs/benchmarks/cell-store-2026-07-31.json`（已入库；`test-results/` 副本被 gitignore）。
 
 ## 结果（2026-07-31，node v22.22.2，darwin x64，M 系列 Mac）
 
@@ -36,3 +36,7 @@
 
 - `Worksheet` 默认注入 `chunkedCellStoreFactory`，仍可通过 `WorksheetInit.storeFactory` 替换（用于对比测试）。
 - 数字 key 方案保留了 2^20 列上限的隐性约束，chunked 方案同样受 chunk key 空间约束（chunk 列索引 < 2^20，即列 < 2^27），远超市面表格上限，可接受。
+
+## 冻结范围说明
+
+本次 benchmark 仅覆盖"窄而长、连续密集、全范围遍历"场景；未覆盖稀疏随机分布、超宽表（1000+ 列）、小视口遍历、频繁删除、插入行列重建、超大逻辑表少量非空等场景。因此结论措辞为：**chunked 冻结为 M0/M1 默认实现**；M6 性能阶段可在保持 `CellStore` 接口不变的前提下，针对上述场景补测并重新评估 chunk size 甚至实现本身。

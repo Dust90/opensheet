@@ -41,6 +41,7 @@ export const sheetCreateCommand: SheetCommand<SheetCreatePayload, SheetCreateRes
       columnCount: payload.columns ?? DEFAULT_COLUMNS,
     });
     const index = ctx.workbook.listSheets().length;
+    const previousActiveSheetId = ctx.workbook.activeSheetId;
     const apply = () => ctx.workbook.restoreSheet(sheet, index);
     apply();
     ctx.workbook.setActiveSheet(sheet.id);
@@ -68,6 +69,10 @@ export const sheetCreateCommand: SheetCommand<SheetCreatePayload, SheetCreateRes
       approxBytes: 512,
       undo: (rctx) => {
         rctx.workbook.removeSheet(sheet.id);
+        // Restore the sheet that was active before sheet.create ran.
+        if (rctx.workbook.listSheets().some((s) => s.id === previousActiveSheetId)) {
+          rctx.workbook.setActiveSheet(previousActiveSheetId);
+        }
         rctx.workbook.emit({
           workbookId: rctx.workbook.id,
           sheetId: sheet.id,
@@ -78,6 +83,7 @@ export const sheetCreateCommand: SheetCommand<SheetCreatePayload, SheetCreateRes
       },
       redo: (rctx) => {
         rctx.workbook.restoreSheet(sheet, index);
+        rctx.workbook.setActiveSheet(sheet.id);
         rctx.workbook.emit({
           workbookId: rctx.workbook.id,
           sheetId: sheet.id,

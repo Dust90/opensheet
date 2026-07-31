@@ -5,6 +5,7 @@ export type { WorksheetInit } from "./worksheet.js";
 export { Workbook } from "./workbook.js";
 export type { WorkbookInit } from "./workbook.js";
 export { StyleTable } from "./styles.js";
+export type { WorksheetView } from "./view.js";
 export {
   toWorkbookSnapshot,
   toWorksheetSnapshot,

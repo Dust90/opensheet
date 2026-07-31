@@ -33,7 +33,7 @@ export class StyleTable {
     return id;
   }
 
-  get(id: string): CellStyle | undefined {
+  get(id: string): Readonly<CellStyle> | undefined {
     return this.styles.get(id);
   }
 
@@ -42,7 +42,8 @@ export class StyleTable {
   }
 
   toJSON(): Record<string, CellStyle> {
-    return Object.fromEntries(this.styles);
+    // Deep copy: callers must never reach internal style objects.
+    return Object.fromEntries([...this.styles].map(([id, style]) => [id, structuredClone(style)]));
   }
 
   /** Replace the entire table content (used by snapshot loading). */

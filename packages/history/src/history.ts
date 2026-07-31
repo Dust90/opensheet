@@ -66,20 +66,23 @@ export class HistoryManager implements HistorySink {
   }
 
   undo(bus: CommandBus): boolean {
-    const entry = this.undoStack.pop();
+    const entry = this.undoStack[this.undoStack.length - 1];
     if (entry === undefined) return false;
-    this.undoBytes -= entry.batch.approxBytes;
+    // Replay FIRST: if it throws, both stacks and byte accounting stay intact.
     bus.replayJournal(entry.batch, "undo");
+    this.undoStack.pop();
+    this.undoBytes -= entry.batch.approxBytes;
     this.redoStack.push(entry);
     this.redoBytes += entry.batch.approxBytes;
     return true;
   }
 
   redo(bus: CommandBus): boolean {
-    const entry = this.redoStack.pop();
+    const entry = this.redoStack[this.redoStack.length - 1];
     if (entry === undefined) return false;
-    this.redoBytes -= entry.batch.approxBytes;
     bus.replayJournal(entry.batch, "redo");
+    this.redoStack.pop();
+    this.redoBytes -= entry.batch.approxBytes;
     this.undoStack.push(entry);
     this.undoBytes += entry.batch.approxBytes;
     return true;

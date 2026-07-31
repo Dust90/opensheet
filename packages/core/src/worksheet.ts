@@ -3,6 +3,7 @@
 
 import type { CellData, CellStore, CellStoreFactory, Range } from "@opensheet/shared";
 import { chunkedCellStoreFactory } from "./cell-store/chunked-store.js";
+import type { WorksheetView } from "./view.js";
 
 export interface WorksheetInit {
   id: string;
@@ -40,8 +41,26 @@ export class Worksheet {
     return this.cells.size;
   }
 
-  getCell(row: number, col: number): CellData | undefined {
+  /**
+   * Read access. The returned object is the INTERNAL cell, typed Readonly:
+   * mutating it bypasses the Command Bus (no event, no history, no dirty
+   * region) and is a contract violation. Renderers should use asView().
+   */
+  getCell(row: number, col: number): Readonly<CellData> | undefined {
     return this.cells.get(row, col);
+  }
+
+  /** Read-only view for renderers and other consumers outside the command path. */
+  asView(): WorksheetView {
+    return this;
+  }
+
+  getRowHeight(row: number): number | undefined {
+    return this.rowHeights.get(row);
+  }
+
+  getColumnWidth(col: number): number | undefined {
+    return this.columnWidths.get(col);
   }
 
   setCell(row: number, col: number, data: CellData): void {

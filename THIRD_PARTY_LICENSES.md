@@ -2,7 +2,7 @@
 
 OpenSheet 本体采用 [MIT](./LICENSE)。
 
-本清单记录**直接依赖**的用途与许可证；完整依赖树（含传递依赖）由 CI 中的 `pnpm licenses:check` 按 allowlist 持续校验（允许：MIT / ISC / Apache-2.0 / BSD-2-Clause / BSD-3-Clause / 0BSD / CC0-1.0 / Unlicense / Python-2.0 / BlueOak-1.0.0，以及两个经评审的例外，见下文）。
+本清单记录**直接依赖**的用途与许可证；完整依赖树（含传递依赖）由 CI 中的 `pnpm licenses:check` 按 allowlist 持续校验（允许：MIT / ISC / Apache-2.0 / BSD-2-Clause / BSD-3-Clause / 0BSD / CC0-1.0 / Unlicense / Python-2.0 / BlueOak-1.0.0）。allowlist 之外仅存在两个**包级例外**（按包名精确放行，同许可证的其他包仍会被拦截），见下文。
 
 ## 运行时依赖
 

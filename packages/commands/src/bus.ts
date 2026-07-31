@@ -2,12 +2,13 @@
 // buffered events (ADR-0003).
 
 import type { Workbook } from "@opensheet/core";
-import { isSheetError, type ChangeSource } from "@opensheet/shared";
+import { isSheetError, type CellData, type ChangeSource } from "@opensheet/shared";
 import { ApplyOperationsError, type ApplyOperationsResult } from "./operations.js";
 import { CommandRegistry } from "./registry.js";
 import type {
   BeforeCommitHook,
   CommandContext,
+  DerivedWriter,
   HistorySink,
   JournalBatch,
   JournalEntry,
@@ -116,17 +117,29 @@ export class CommandBus {
    */
   replayJournal(batch: JournalBatch, direction: "undo" | "redo"): void {
     const source: ChangeSource = direction === "undo" ? "undo" : "redo";
+    const derivedJournal: JournalEntry[] = [];
+    const completed: JournalEntry[] = [];
     this.workbook.beginBatch();
+    const ctx = { workbook: this.workbook, source };
     try {
-      const ctx = { workbook: this.workbook, source };
       const entries = direction === "undo" ? [...batch.entries].reverse() : batch.entries;
       for (const entry of entries) {
         if (direction === "undo") entry.undo(ctx);
         else entry.redo(ctx);
+        completed.push(entry);
       }
-      this.runBeforeCommitHooks(source);
+      this.runBeforeCommitHooks(source, derivedJournal);
       this.workbook.endBatch(true);
     } catch (error) {
+      // Best-effort restore of whatever was already replayed, then discard
+      // all buffered events: observers must not see a partial replay.
+      const restoreCtx = { workbook: this.workbook, source };
+      for (let i = derivedJournal.length - 1; i >= 0; i--) derivedJournal[i]!.undo(restoreCtx);
+      if (direction === "undo") {
+        for (const entry of [...completed].reverse()) entry.redo(restoreCtx);
+      } else {
+        for (const entry of [...completed].reverse()) entry.undo(restoreCtx);
+      }
       this.workbook.endBatch(false);
       throw error;
     }
@@ -138,6 +151,8 @@ export class CommandBus {
     source: ChangeSource,
   ): { results: unknown[]; affected: number } {
     const journal: JournalEntry[] = [];
+    // Rollback-only journal for derived (hook) writes — never enters history.
+    const derivedJournal: JournalEntry[] = [];
     const results: unknown[] = [];
     let affected = 0;
     let index = -1;
@@ -156,12 +171,15 @@ export class CommandBus {
           0,
         );
       }
-      this.runBeforeCommitHooks(source);
+      this.runBeforeCommitHooks(source, derivedJournal);
       this.workbook.endBatch(true);
     } catch (error) {
-      // Reverse-replay journal inside the still-open batch; buffered events
-      // from both the partial execution and the rollback are discarded.
+      // Reverse-replay both journals inside the still-open batch; buffered
+      // events from partial execution, hooks and rollback are discarded.
       const replayCtx = { workbook: this.workbook, source };
+      for (let i = derivedJournal.length - 1; i >= 0; i--) {
+        derivedJournal[i]!.undo(replayCtx);
+      }
       for (let i = journal.length - 1; i >= 0; i--) {
         journal[i]!.undo(replayCtx);
       }
@@ -181,9 +199,52 @@ export class CommandBus {
     return { results, affected };
   }
 
-  private runBeforeCommitHooks(source: ChangeSource): void {
+  private runBeforeCommitHooks(source: ChangeSource, derivedJournal: JournalEntry[]): void {
+    if (this.beforeCommitHooks.length === 0) return;
+    const derived = this.makeDerivedWriter(derivedJournal);
     for (const hook of this.beforeCommitHooks) {
-      hook({ workbook: this.workbook, source });
+      hook({ workbook: this.workbook, source, derived });
     }
+  }
+
+  /**
+   * Derived writes are tracked: previous value captured, change applied,
+   * derived event buffered, inverse patch appended to the rollback journal.
+   */
+  private makeDerivedWriter(derivedJournal: JournalEntry[]): DerivedWriter {
+    const workbook = this.workbook;
+    const write = (sheetId: string, row: number, col: number, data: CellData | undefined): void => {
+      const sheet = workbook.getSheet(sheetId);
+      const previous = sheet.getCell(row, col);
+      const previousClone = previous === undefined ? undefined : { ...previous };
+      const nextClone = data === undefined ? undefined : { ...data };
+      if (nextClone === undefined) sheet.deleteCell(row, col);
+      else sheet.setCell(row, col, nextClone);
+      const range = { startRow: row, startCol: col, endRow: row, endCol: col };
+      workbook.emit({
+        workbookId: workbook.id,
+        sheetId,
+        changes: [{ range, kind: "cells" }],
+        source: "derived",
+        batch: false,
+      });
+      derivedJournal.push({
+        label: "derived.write",
+        affected: [{ sheetId, range, kind: "cells" }],
+        approxBytes: 192,
+        undo: () => {
+          if (previousClone === undefined) sheet.deleteCell(row, col);
+          else sheet.setCell(row, col, { ...previousClone });
+        },
+        redo: () => {
+          if (nextClone === undefined) sheet.deleteCell(row, col);
+          else sheet.setCell(row, col, { ...nextClone });
+        },
+      });
+    };
+    return {
+      setCell: (sheetId, row, col, data) => write(sheetId, row, col, data),
+      clearCell: (sheetId, row, col) => write(sheetId, row, col, undefined),
+    };
   }
 }
