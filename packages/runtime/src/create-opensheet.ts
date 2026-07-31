@@ -61,16 +61,21 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     // — detected by diffing formula sources against the graph.
     bus.addBeforeCommitHook(({ workbook: wb, changes, derived }) => {
       const changedFormulas: Array<{ sheetId: string; row: number; col: number }> = [];
+      // M4: filter changes never reach the engine — values are untouched, so
+      // the dirty subgraph is empty by definition.
+      const recalcChanges = changes.filter((change) => change.kind !== "filter");
+      if (recalcChanges.length === 0) return;
 
-      for (const change of changes) {
+      for (const change of recalcChanges) {
         const sheetView = wb.listSheetViews().find((s) => s.id === change.sheetId);
         if (sheetView === undefined) continue;
 
-        if (change.kind === "rows" || change.kind === "columns") {
+        if (change.kind === "rows" || change.kind === "columns" || change.kind === "reorder") {
           // Fix 2: structural command — rebuild the entire sheet graph sparsely
           // (iterates only non-empty CellStore entries, not all coordinates).
           // This corrects shifted coordinates, removes deleted-row nodes, and
           // handles out-of-bounds references atomically.
+          // M4: "reorder" (sort/dedupe) moved formulas to new rows — same path.
           formulas.rebuildSheetGraph(wb, change.sheetId);
           // After rebuild, ALL formula cells on this sheet are "changed".
           for (const [row, col, data] of sheetView.cellEntries()) {
@@ -113,7 +118,7 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
         }
       }
 
-      formulas.recalculate(wb, changes, changedFormulas, derived);
+      formulas.recalculate(wb, recalcChanges, changedFormulas, derived);
     });
     const entry: WorkbookEntry = { workbook, bus, history, formulas };
     entries.set(workbook.id, entry);

@@ -17,7 +17,9 @@ export type ChangeKind =
   | "rows" // row structure (insert/delete/resize)
   | "columns" // column structure
   | "structure" // sheet-level structure (rename, freeze, sheet add/remove)
-  | "metadata"; // row heights / column widths
+  | "metadata" // row heights / column widths
+  | "filter" // row visibility only (M4) — MUST NOT trigger formula recalculation
+  | "reorder"; // rows physically reordered by sort/dedupe (M4) — sparse graph rebuild
 
 export interface CellChange {
   range: Range;

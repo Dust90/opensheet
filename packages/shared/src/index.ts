@@ -8,3 +8,4 @@ export * from "./events.js";
 export * from "./cell-store.js";
 export * from "./snapshot.js";
 export * from "./infer.js";
+export * from "./data-operations.js";

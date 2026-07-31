@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createOpenSheet, createPersistence, validateSnapshot, type StorageLike } from "../index.js";
-import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION, type WorkbookSnapshot } from "@opensheet/shared";
+import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION, type CellError, type WorkbookSnapshot } from "@opensheet/shared";
 
 function memoryStorage(seed: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...seed };
@@ -521,48 +521,49 @@ describe("M3.6 Fix 3: Snapshot rebuild writes #CYCLE! before evaluating downstre
 // ── M3.7 guardrail: transaction total budget ──────────────────────────────
 
 describe("M3.7 guardrail: transaction total budget exhaustion", () => {
-  it("second formula gets budget-exceeded when transaction limit is very small", async () => {
-    // Set maxCellReadsPerTransaction so low that the second formula can't run.
+  it("formulas in ONE atomic transaction share the budget; excess yields #VALUE! and the transaction still commits", async () => {
     const api = createOpenSheet({
-      formula: { maxCellReadsPerFormula: 1_000, maxCellReadsPerTransaction: 5 },
+      formula: { maxCellReadsPerFormula: 1_000, maxCellReadsPerTransaction: 4 },
     });
     const wb = api.createWorkbook({ name: "Budget" });
     const sheetId = wb.activeSheetId;
 
-    // A1 = plain value
-    await api.applyOperations({
+    // ONE atomic transaction carrying both formulas. B1 = SUM(A1:A3) consumes
+    // 4 reads — exactly the shared transaction budget; C1 = B1*2 is evaluated
+    // after B1 (dependency order) and finds the budget exhausted.
+    const result = await api.applyOperations({
       workbookId: wb.id, sheetId, atomic: true,
-      operations: [{ type: "range.write", range: "A1:B1", values: [[1, 2]] }],
+      operations: [
+        { type: "range.write", range: "A1:A3", values: [[1], [2], [3]] },
+        { type: "formula.set", range: "B1", formula: "=SUM(A1:A3)" },
+        { type: "formula.set", range: "C1", formula: "=B1*2" },
+      ],
     });
 
-    // B2 = formula referencing A1 (cheap, 1 read)
-    // C2 = formula referencing B1 (cheap, 1 read)
-    // With txBudget=5 both may succeed; with txBudget=1 only the first should.
-    const apiBudget1 = createOpenSheet({
-      formula: { maxCellReadsPerFormula: 1_000, maxCellReadsPerTransaction: 1 },
-    });
-    const wb2 = apiBudget1.createWorkbook({ name: "B2" });
-    const sid = wb2.activeSheetId;
-    await apiBudget1.applyOperations({
-      workbookId: wb2.id, sheetId: sid, atomic: true,
-      operations: [{ type: "range.write", range: "A1", values: [[10]] }],
-    });
-    await apiBudget1.applyOperations({
-      workbookId: wb2.id, sheetId: sid, atomic: true,
-      operations: [{ type: "formula.set", range: "B1", formula: "=A1+1" }],
-    });
-    await apiBudget1.applyOperations({
-      workbookId: wb2.id, sheetId: sid, atomic: true,
-      operations: [{ type: "formula.set", range: "C1", formula: "=A1+2" }],
-    });
-    // Both formulas each need 1 read; with budget=1 the second formula in the
-    // same transaction will be blocked. We just verify there is no crash and
-    // the first formula produces a value (correct or budget-error).
-    const b1 = apiBudget1.readRange({ sheetId: sid, range: "B1" })[0]![0];
-    // B1 should be 11 (formula evaluated successfully within budget=1 per tx).
-    // C1 may be #VALUE! if budget was shared across both formulas.
-    // The key invariant: no uncaught exception.
-    expect(b1 === 11 || (typeof b1 === "object" && b1 !== null)).toBe(true);
+    // The user transaction committed normally — a budget-exceeded formula is
+    // an error VALUE, never a transaction failure.
+    expect(result.status).toBe("completed");
+
+    // First formula consumed exactly the shared budget and succeeded.
+    expect(api.readRange({ sheetId, range: "B1" })[0]![0]).toBe(6);
+
+    // Second formula exceeds the TRANSACTION budget (its own budget is fine).
+    const c1 = api.readRange({ sheetId, range: "C1" })[0]![0];
+    expect(c1).toMatchObject({ type: "#VALUE!" });
+    expect((c1 as CellError).message).toContain("limit exceeded");
+
+    // Both formula sources persisted — the commit was not rolled back.
+    const view = api.getWorksheetView(sheetId);
+    expect(view.getCell(0, 1)?.formula).toBe("=SUM(A1:A3)");
+    expect(view.getCell(0, 2)?.formula).toBe("=B1*2");
+
+    // The whole transaction is ONE history entry: a single undo removes the
+    // seed data and both formulas atomically.
+    api.undo();
+    const after = api.getWorksheetView(sheetId);
+    expect(api.readRange({ sheetId, range: "A1" })[0]![0]).toBeNull();
+    expect(after.getCell(0, 1)?.formula).toBeUndefined();
+    expect(after.getCell(0, 2)?.formula).toBeUndefined();
   });
 });
 
