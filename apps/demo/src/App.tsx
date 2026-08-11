@@ -13,7 +13,16 @@ import { cellsToTSV, parseTSV } from "@opensheet/clipboard";
  */
 
 function App() {
-  const api = useMemo(() => createOpenSheet(), []);
+  const api = useMemo(() => {
+    // Benchmarks may opt into a larger retained-history budget so they can
+    // measure an intentionally large inverse journal without changing the
+    // production/demo default (16 MiB).
+    const rawHistoryBytes = new URLSearchParams(window.location.search).get("historyMaxBytes");
+    const historyMaxBytes = rawHistoryBytes === null ? undefined : Number(rawHistoryBytes);
+    return historyMaxBytes !== undefined && Number.isSafeInteger(historyMaxBytes) && historyMaxBytes > 0
+      ? createOpenSheet({ history: { maxMemoryBytes: historyMaxBytes } })
+      : createOpenSheet();
+  }, []);
   const [workbook, setWorkbook] = useState<WorkbookInfo | null>(null);
   const [bootStatus, setBootStatus] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
