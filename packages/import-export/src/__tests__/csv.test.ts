@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SheetError } from "@opensheet/shared";
-import { parseCSV, stringifyCSV } from "../csv.js";
+import { CSVParser, parseCSV, stringifyCSV } from "../csv.js";
 
 describe("CSV codec", () => {
   it("parses commas, escaped quotes, embedded newlines, and CRLF", () => {
@@ -16,6 +16,16 @@ describe("CSV codec", () => {
     expect(parseCSV("a,b\r\n")).toEqual([["a", "b"]]);
     expect(parseCSV("a,b\n")).toEqual([["a", "b"]]);
     expect(parseCSV("a,")).toEqual([["a", ""]]);
+  });
+  it("has identical results when CRLF and quoted fields cross chunk boundaries", () => {
+    const parser = new CSVParser();
+    const rows = [
+      ...parser.push('a,"two'),
+      ...parser.push('"" quotes"\r'),
+      ...parser.push('\nb,c'),
+      ...parser.finish(),
+    ];
+    expect(rows).toEqual([["a", "two\" quotes"], ["b", "c"]]);
   });
   it("supports an explicit delimiter and rejects malformed input", () => {
     expect(parseCSV("a;b\n1;2", { delimiter: ";" })).toEqual([["a", "b"], ["1", "2"]]);

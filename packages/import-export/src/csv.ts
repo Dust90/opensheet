@@ -13,46 +13,65 @@ function delimiterOf(options?: CSVOptions): string {
   return delimiter;
 }
 
+/** Incremental RFC 4180 parser; chunk boundaries are semantically invisible. */
+export class CSVParser {
+  private readonly delimiter: string;
+  private row: string[] = [];
+  private field = "";
+  private state: "fieldStart" | "unquoted" | "quoted" | "afterQuote" = "fieldStart";
+  private recordJustEnded = false;
+  private skipLF = false;
+
+  constructor(options?: CSVOptions) { this.delimiter = delimiterOf(options); }
+
+  push(text: string): string[][] {
+    if (typeof text !== "string") throw new SheetError("E_VALIDATION", "CSV text must be a string");
+    const rows: string[][] = [];
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index]!;
+      if (this.skipLF) { this.skipLF = false; if (char === "\n") continue; }
+      if (this.state === "quoted") {
+        if (char === "\"") {
+          if (text[index + 1] === "\"") { this.field += "\""; index += 1; }
+          else this.state = "afterQuote";
+        } else this.field += char;
+        continue;
+      }
+      // A doubled quote may be split across Worker chunks. The first quote
+      // tentatively enters afterQuote; a following quote resumes quoted text.
+      if (this.state === "afterQuote" && char === "\"") { this.field += "\""; this.state = "quoted"; continue; }
+      if (char === this.delimiter) { this.row.push(this.field); this.field = ""; this.state = "fieldStart"; this.recordJustEnded = false; continue; }
+      if (char === "\n" || char === "\r") {
+        if (char === "\r") this.skipLF = true;
+        this.row.push(this.field); rows.push(this.row); this.row = []; this.field = ""; this.state = "fieldStart"; this.recordJustEnded = true; continue;
+      }
+      if (this.state === "fieldStart") {
+        if (char === "\"") { this.state = "quoted"; this.recordJustEnded = false; continue; }
+        this.field += char; this.state = "unquoted"; this.recordJustEnded = false; continue;
+      }
+      if (this.state === "afterQuote") throw new SheetError("E_VALIDATION", "CSV contains characters after a closing quote");
+      if (char === "\"") throw new SheetError("E_VALIDATION", "CSV contains a quote in an unquoted field");
+      this.field += char; this.recordJustEnded = false;
+    }
+    return rows;
+  }
+
+  finish(): string[][] {
+    if (this.state === "quoted") throw new SheetError("E_VALIDATION", "CSV contains an unterminated quoted field");
+    if (this.recordJustEnded) return [];
+    this.row.push(this.field);
+    const rows = [this.row];
+    this.row = []; this.field = ""; this.state = "fieldStart"; this.recordJustEnded = true;
+    return rows;
+  }
+}
+
 /** Parse RFC 4180-style CSV text without coercing field values. */
 export function parseCSV(text: string, options?: CSVOptions): string[][] {
   if (typeof text !== "string") throw new SheetError("E_VALIDATION", "CSV text must be a string");
-  const delimiter = delimiterOf(options);
   if (text.length === 0) return [];
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
-  type State = "fieldStart" | "unquoted" | "quoted" | "afterQuote";
-  let state: State = "fieldStart";
-  let recordJustEnded = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!;
-    if (state === "quoted") {
-      if (char === "\"") {
-        if (text[index + 1] === "\"") { field += "\""; index += 1; }
-        else state = "afterQuote";
-      } else field += char;
-      continue;
-    }
-    if (char === delimiter) {
-      row.push(field); field = ""; state = "fieldStart"; recordJustEnded = false; continue;
-    }
-    if (char === "\n" || char === "\r") {
-      if (char === "\r" && text[index + 1] === "\n") index += 1;
-      row.push(field); rows.push(row); row = []; field = ""; state = "fieldStart"; recordJustEnded = true; continue;
-    }
-    if (state === "fieldStart") {
-      if (char === "\"") { state = "quoted"; recordJustEnded = false; continue; }
-      field += char; state = "unquoted"; recordJustEnded = false; continue;
-    }
-    if (state === "afterQuote") {
-      throw new SheetError("E_VALIDATION", "CSV contains characters after a closing quote");
-    }
-    if (char === "\"") throw new SheetError("E_VALIDATION", "CSV contains a quote in an unquoted field");
-    field += char; recordJustEnded = false;
-  }
-  if (state === "quoted") throw new SheetError("E_VALIDATION", "CSV contains an unterminated quoted field");
-  if (!recordJustEnded) { row.push(field); rows.push(row); }
-  return rows;
+  const parser = new CSVParser(options);
+  return [...parser.push(text), ...parser.finish()];
 }
 
 /** Serialize fields using CRLF and RFC 4180 quoting. */
