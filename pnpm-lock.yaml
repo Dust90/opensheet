@@ -403,6 +403,9 @@ importers:
       '@opensheet/history':
         specifier: workspace:*
         version: link:../history
+      '@opensheet/import-export':
+        specifier: workspace:*
+        version: link:../import-export
       '@opensheet/plugin-api':
         specifier: workspace:*
         version: link:../plugin-api

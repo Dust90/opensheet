@@ -46,7 +46,7 @@ export type { RangeDedupePayload } from "./commands/dedupe.js";
 
 import { CommandRegistry } from "./registry.js";
 import { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/cells.js";
-import { sheetCreateCommand } from "./commands/sheets.js";
+import { sheetCreateCommand, sheetImportCommand } from "./commands/sheets.js";
 import { sheetFreezeCommand } from "./commands/freeze.js";
 import { rangeStyleCommand } from "./commands/style.js";
 import { formulaSetCommand } from "./commands/formula.js";
@@ -67,6 +67,7 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register(cellClearCommand);
   registry.register(rangeWriteCommand);
   registry.register(sheetCreateCommand);
+  registry.register(sheetImportCommand);
   registry.register(sheetFreezeCommand);
   registry.register(rangeStyleCommand);
   registry.register(formulaSetCommand);

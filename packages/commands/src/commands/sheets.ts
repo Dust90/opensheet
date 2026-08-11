@@ -17,6 +17,21 @@ export interface SheetCreateResult {
   columnCount: number;
 }
 
+/**
+ * Internal payload used by import/export adapters.  The Worksheet is built
+ * off-workbook first, so an import never exposes partially-written cells.
+ */
+export interface SheetImportPayload {
+  sheet: Worksheet;
+}
+
+export interface SheetImportResult {
+  sheetId: string;
+  name: string;
+  rowCount: number;
+  columnCount: number;
+}
+
 const DEFAULT_ROWS = 1000;
 const DEFAULT_COLUMNS = 26;
 
@@ -101,6 +116,70 @@ export const sheetCreateCommand: SheetCommand<SheetCreatePayload, SheetCreateRes
         columnCount: sheet.columnCount,
       },
       journal,
+    };
+  },
+};
+
+/**
+ * Attach a fully-populated staging worksheet as one reversible operation.
+ * This is deliberately not exposed as a public SheetOperation: callers must
+ * construct the sheet away from the live Workbook before executing it.
+ */
+export const sheetImportCommand: SheetCommand<SheetImportPayload, SheetImportResult> = {
+  id: "sheet.import",
+  validate(payload) {
+    if (typeof payload !== "object" || payload === null || !(payload.sheet instanceof Worksheet)) {
+      throw new SheetError("E_VALIDATION", "sheet.import requires a staging Worksheet");
+    }
+  },
+  execute(ctx, payload): CommandOutcome<SheetImportResult> {
+    const sheet = payload.sheet;
+    if (ctx.workbook.listSheets().some((candidate) => candidate.id === sheet.id || candidate.name === sheet.name)) {
+      throw new SheetError("E_VALIDATION", `Imported sheet already exists: "${sheet.name}"`);
+    }
+    const index = ctx.workbook.listSheets().length;
+    const previousActiveSheetId = ctx.workbook.activeSheetId;
+    const range = {
+      startRow: 0,
+      startCol: 0,
+      endRow: Math.max(0, sheet.rowCount - 1),
+      endCol: Math.max(0, sheet.columnCount - 1),
+    };
+    const emit = (workbook: typeof ctx.workbook, source: typeof ctx.source) => {
+      workbook.emit({
+        workbookId: workbook.id,
+        sheetId: sheet.id,
+        changes: [{ range, kind: "structure" }],
+        source,
+        batch: false,
+      });
+    };
+
+    ctx.workbook.restoreSheet(sheet, index);
+    ctx.workbook.setActiveSheet(sheet.id);
+    emit(ctx.workbook, ctx.source);
+
+    return {
+      result: { sheetId: sheet.id, name: sheet.name, rowCount: sheet.rowCount, columnCount: sheet.columnCount },
+      journal: {
+        label: "sheet.import",
+        affected: [{ sheetId: sheet.id, range, kind: "structure" }],
+        // The journal retains the imported sparse worksheet for redo.  This
+        // estimate keeps the existing History memory policy meaningful.
+        approxBytes: 512 + sheet.cellCount * 96,
+        undo: (replay) => {
+          replay.workbook.removeSheet(sheet.id);
+          if (replay.workbook.listSheets().some((candidate) => candidate.id === previousActiveSheetId)) {
+            replay.workbook.setActiveSheet(previousActiveSheetId);
+          }
+          emit(replay.workbook, replay.source);
+        },
+        redo: (replay) => {
+          replay.workbook.restoreSheet(sheet, index);
+          replay.workbook.setActiveSheet(sheet.id);
+          emit(replay.workbook, replay.source);
+        },
+      },
     };
   },
 };

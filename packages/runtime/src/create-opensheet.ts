@@ -7,6 +7,14 @@ import {
 } from "@opensheet/commands";
 import { toWorkbookSnapshot, Workbook, workbookFromSnapshot, Worksheet } from "@opensheet/core";
 import { HistoryManager, type HistoryOptions } from "@opensheet/history";
+import {
+  createBrowserCSVWorker,
+  CSVWorkerTaskHandler,
+  validateCSVOptions,
+  type CSVWorkerRequest,
+  type CSVWorkerResponse,
+  type CSVWorkerTransport,
+} from "@opensheet/import-export";
 import { createPluginHost, type PluginHost } from "@opensheet/plugin-api";
 import {
   parseRange,
@@ -68,11 +76,17 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       const changedFormulas: Array<{ sheetId: string; row: number; col: number }> = [];
       // M4: filter changes never reach the engine — values are untouched, so
       // the dirty subgraph is empty by definition.
-      const recalcChanges = changes.filter((change) => change.kind !== "filter");
+      // A sheet.create/sheet.import undo removes its sheet before replay hooks
+      // run. Such a structure event is still useful to observers, but it has
+      // no surviving worksheet for FormulaEngine to inspect or recalculate.
+      const sheetViews = wb.listSheetViews();
+      const recalcChanges = changes.filter(
+        (change) => change.kind !== "filter" && sheetViews.some((sheet) => sheet.id === change.sheetId),
+      );
       if (recalcChanges.length === 0) return;
 
       for (const change of recalcChanges) {
-        const sheetView = wb.listSheetViews().find((s) => s.id === change.sheetId);
+        const sheetView = sheetViews.find((s) => s.id === change.sheetId);
         if (sheetView === undefined) continue;
 
         if (change.kind === "rows" || change.kind === "columns" || change.kind === "reorder") {
@@ -192,6 +206,118 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     if (from.row >= rowCount || from.col >= columnCount) throw new SheetError("E_INVALID_RANGE", "findNext.from is outside worksheet bounds");
   }
 
+  async function streamCSVRows(
+    file: Blob,
+    delimiter: string | undefined,
+    onRows: (rows: readonly string[][]) => void,
+  ): Promise<void> {
+    const taskId = crypto.randomUUID();
+    const transport = createBrowserCSVWorker() ?? createLocalCSVWorkerTransport();
+    let workerFailure: SheetError | undefined;
+    let resolveCompletion: (() => void) | undefined;
+    let rejectCompletion: ((error: unknown) => void) | undefined;
+    const completion = new Promise<void>((resolve, reject) => {
+      resolveCompletion = resolve;
+      rejectCompletion = reject;
+    });
+    // The worker may fail while the main thread is awaiting the next Blob
+    // chunk. Keep the rejection observed until the normal completion await.
+    void completion.catch(() => undefined);
+    const onMessage = (event: MessageEvent<CSVWorkerResponse>) => {
+      const response = event.data;
+      if (response.taskId !== taskId) return;
+      if (response.type === "rows") {
+        onRows(response.rows);
+      } else if (response.type === "error") {
+        workerFailure = new SheetError(response.code, response.message);
+        rejectCompletion?.(workerFailure);
+      } else {
+        resolveCompletion?.();
+      }
+    };
+    transport.addEventListener("message", onMessage);
+    const send = (request: CSVWorkerRequest) => transport.postMessage(request);
+    const throwIfWorkerFailed = () => {
+      if (workerFailure !== undefined) throw workerFailure;
+    };
+    const reader = file.stream().getReader();
+    const decoder = new TextDecoder();
+    try {
+      send(delimiter === undefined ? { type: "start", taskId } : { type: "start", taskId, options: { delimiter } });
+      throwIfWorkerFailed();
+      while (true) {
+        const next = await reader.read();
+        throwIfWorkerFailed();
+        if (next.done) break;
+        const text = decoder.decode(next.value, { stream: true });
+        // Bound each protocol message even if a custom Blob stream yields a
+        // very large Uint8Array in one read.
+        for (let offset = 0; offset < text.length; offset += 64 * 1024) {
+          send({ type: "chunk", taskId, text: text.slice(offset, offset + 64 * 1024) });
+          throwIfWorkerFailed();
+        }
+      }
+      const finalText = decoder.decode();
+      for (let offset = 0; offset < finalText.length; offset += 64 * 1024) {
+        send({ type: "chunk", taskId, text: finalText.slice(offset, offset + 64 * 1024) });
+        throwIfWorkerFailed();
+      }
+      send({ type: "finish", taskId });
+      throwIfWorkerFailed();
+      await completion;
+    } catch (caught) {
+      send({ type: "cancel", taskId });
+      throw caught;
+    } finally {
+      reader.releaseLock();
+      transport.removeEventListener?.("message", onMessage);
+      transport.terminate?.();
+    }
+  }
+
+  function createLocalCSVWorkerTransport(): CSVWorkerTransport {
+    const tasks = new CSVWorkerTaskHandler();
+    const listeners = new Set<(event: MessageEvent<CSVWorkerResponse>) => void>();
+    const emit = (response: CSVWorkerResponse) => {
+      const event = { data: response } as MessageEvent<CSVWorkerResponse>;
+      for (const listener of listeners) listener(event);
+    };
+    return {
+      postMessage(request) { tasks.handle(request, emit); },
+      addEventListener(_type, listener) { listeners.add(listener); },
+      removeEventListener(_type, listener) { listeners.delete(listener); },
+      terminate() { listeners.clear(); },
+    };
+  }
+
+  function validateImportCSVOptions(value: unknown): asserts value is { file: Blob; delimiter?: string } {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new SheetError("E_VALIDATION", "importCSV options must be an object");
+    }
+    const options = value as Record<string, unknown>;
+    for (const key of Object.keys(options)) {
+      if (key !== "file" && key !== "delimiter") {
+        throw new SheetError("E_VALIDATION", `importCSV options contains unknown field \"${key}\"`);
+      }
+    }
+    if (typeof Blob === "undefined" || !(options.file instanceof Blob)) {
+      throw new SheetError("E_VALIDATION", "importCSV.file must be a Blob");
+    }
+    validateCSVOptions(options.delimiter === undefined ? {} : { delimiter: options.delimiter });
+  }
+
+  function importedSheetName(file: Blob, workbook: Workbook): string {
+    const candidate = file as Blob & { name?: unknown };
+    const rawName = typeof candidate.name === "string" ? candidate.name.trim() : "";
+    const basename = rawName.split(/[\\/]/).at(-1) ?? "";
+    const base = (basename.replace(/\.csv$/i, "").trim() || "Imported CSV");
+    const names = new Set(workbook.listSheets().map((sheet) => sheet.name));
+    if (!names.has(base)) return base;
+    let suffix = 2;
+    while (names.has(`${base} (${suffix})`)) suffix += 1;
+    return `${base} (${suffix})`;
+  }
+
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
       const workbook = new Workbook({ id: id ?? crypto.randomUUID(), name });
@@ -285,10 +411,48 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       return next ?? matches[0]!;
     },
 
-    importCSV(): Promise<ImportCSVResult> {
-      return Promise.reject(
-        new SheetError("E_NOT_IMPLEMENTED", "CSV import lands in M5 (import-export package)"),
+    async importCSV(options): Promise<ImportCSVResult> {
+      validateImportCSVOptions(options);
+      const entry = getEntry();
+      let rowCount = 0;
+      let columnCount = 0;
+
+      // First pass validates the complete stream and finds exact worksheet
+      // dimensions without retaining parsed rows. Blob is replayable, so the
+      // second pass can write directly into an isolated staging Worksheet.
+      await streamCSVRows(options.file, options.delimiter, (rows) => {
+        for (const row of rows) {
+          rowCount += 1;
+          columnCount = Math.max(columnCount, row.length);
+        }
+      });
+
+      const sheet = new Worksheet({
+        id: crypto.randomUUID(),
+        name: importedSheetName(options.file, entry.workbook),
+        // Empty CSV still creates an interactable empty worksheet. The result
+        // reports parsed dimensions (0 × 0), while the model remains valid.
+        rowCount: Math.max(1, rowCount),
+        columnCount: Math.max(1, columnCount),
+      });
+      let row = 0;
+      await streamCSVRows(options.file, options.delimiter, (rows) => {
+        for (const values of rows) {
+          for (let col = 0; col < values.length; col += 1) {
+            sheet.setCell(row, col, { value: values[col]! });
+          }
+          row += 1;
+        }
+      });
+
+      // The staging sheet only becomes observable through this single command.
+      // If either parse/write pass rejects, no existing workbook state changed.
+      const result = entry.bus.execute<{ sheetId: string; rowCount: number; columnCount: number }>(
+        "sheet.import",
+        { sheet },
+        { source: "api" },
       );
+      return { sheetId: result.sheetId, rowCount, columnCount };
     },
 
     exportCSV(): Promise<Blob> {

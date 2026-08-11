@@ -39,10 +39,8 @@ export interface FilterProjectionState {
 
 export interface ImportCSVResult {
   sheetId: string;
-  rows: number;
-  columns: number;
-  warnings: string[];
-  truncated: boolean;
+  rowCount: number;
+  columnCount: number;
 }
 
 export interface OpenSheetAPI {
@@ -70,7 +68,8 @@ export interface OpenSheetAPI {
 
   findNext(options: { sheetId: string; from?: CellAddress } & FindOptions): CellAddress | null;
 
-  importCSV(options: { file: File | Blob | string }): Promise<ImportCSVResult>;
+  /** Import CSV into a new worksheet at A1; existing worksheets are untouched. */
+  importCSV(options: { file: Blob; delimiter?: string }): Promise<ImportCSVResult>;
 
   exportCSV(options: { sheetId: string }): Promise<Blob>;
 

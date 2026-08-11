@@ -1,0 +1,55 @@
+import { describe, expect, it } from "vitest";
+import { SheetError } from "@opensheet/shared";
+import { createOpenSheet } from "../create-opensheet.js";
+
+function namedCSV(text: string, name: string): Blob {
+  return Object.assign(new Blob([text], { type: "text/csv" }), { name });
+}
+
+describe("OpenSheetAPI.importCSV", () => {
+  it("imports a Blob into a new named worksheet and restores it with one undo/redo", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      atomic: true,
+      operations: [{ type: "cell.set", range: "A1", value: "existing" }],
+    });
+
+    const imported = await api.importCSV({ file: namedCSV("Name,Amount\r\nAda,10\r\n", "sales-2026.csv") });
+    expect(imported).toEqual({ sheetId: imported.sheetId, rowCount: 2, columnCount: 2 });
+    expect(api.listSheets().map((sheet) => sheet.name)).toEqual(["Sheet1", "sales-2026"]);
+    expect(api.readRange({ sheetId: imported.sheetId, range: "A1:B2" })).toEqual([["Name", "Amount"], ["Ada", "10"]]);
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1" })).toEqual([["existing"]]);
+
+    api.undo();
+    expect(api.listSheets().map((sheet) => sheet.name)).toEqual(["Sheet1"]);
+    api.redo();
+    expect(api.readRange({ sheetId: imported.sheetId, range: "A1:B2" })).toEqual([["Name", "Amount"], ["Ada", "10"]]);
+  });
+
+  it("does not create a worksheet or emit an event when streaming CSV parsing fails", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    const events: unknown[] = [];
+    api.onChange((event) => events.push(event));
+
+    await expect(api.importCSV({ file: namedCSV('a,"unterminated', "bad.csv") })).rejects.toBeInstanceOf(SheetError);
+    expect(api.listSheets()).toHaveLength(1);
+    expect(events).toEqual([]);
+  });
+
+  it("derives a collision-free fallback name and preserves raw empty fields", async () => {
+    const api = createOpenSheet();
+    api.createWorkbook({ name: "Book" });
+    const first = await api.importCSV({ file: namedCSV("a,\r\n", "data.csv") });
+    const duplicateName = await api.importCSV({ file: namedCSV("b", "data.csv") });
+    const second = await api.importCSV({ file: new Blob(["x"]) });
+    expect(api.listSheets().map((sheet) => sheet.name)).toEqual(["Sheet1", "data", "data (2)", "Imported CSV"]);
+    expect(api.readRange({ sheetId: first.sheetId, range: "A1:B1" })).toEqual([["a", ""]]);
+    expect(api.readRange({ sheetId: duplicateName.sheetId, range: "A1" })).toEqual([["b"]]);
+    expect(second.rowCount).toBe(1);
+    expect(second.columnCount).toBe(1);
+  });
+});

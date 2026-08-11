@@ -24,6 +24,7 @@
     "@opensheet/history": "workspace:*",
     "@opensheet/plugin-api": "workspace:*",
     "@opensheet/shared": "workspace:*",
-    "@opensheet/formula-engine": "workspace:*"
+    "@opensheet/formula-engine": "workspace:*",
+    "@opensheet/import-export": "workspace:*"
   }
 }
