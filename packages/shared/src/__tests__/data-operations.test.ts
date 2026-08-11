@@ -111,6 +111,13 @@ describe("validateSortSpec", () => {
     );
   });
 
+  it("wraps an invalid Intl locale in SheetError", () => {
+    expectSheetError(
+      () => validateSortSpec({ range, hasHeader: false, keys: [{ columnOffset: 0, direction: "asc" }], locale: "@@@" }),
+      /locale/,
+    );
+  });
+
   it("rejects a non-normalized or unsafe range", () => {
     expectSheetError(() =>
       validateSortSpec({

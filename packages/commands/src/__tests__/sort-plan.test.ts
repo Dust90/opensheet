@@ -21,6 +21,12 @@ describe("buildSortPlan", () => {
     expect([...result.destinationToSource]).toEqual([1, 2, 3, 0]);
     expect([...result.sourceToDestination]).toEqual([3, 0, 1, 2]);
     expect(result.movedRows).toBe(4);
+    for (let source = 0; source < result.bodyRowCount; source += 1) {
+      expect(result.destinationToSource[result.sourceToDestination[source]!]!).toBe(source);
+    }
+    for (let destination = 0; destination < result.bodyRowCount; destination += 1) {
+      expect(result.sourceToDestination[result.destinationToSource[destination]!]!).toBe(destination);
+    }
   });
 
   it("keeps a header fixed and treats an identity plan as a true no-op", () => {
@@ -43,5 +49,17 @@ describe("buildSortPlan", () => {
       { startRow: 5, endRow: 8, startCol: 10, endCol: 12 },
       { range: { startRow: 8, endRow: 10, startCol: 0, endCol: 3 }, hasHeader: false, conditions: [{ columnOffset: 0, operator: "isBlank" }] },
     )).toBe(true);
+    expect(conflictsWithFilter({ startRow: 0, endRow: 4, startCol: 10, endCol: 12 }, null)).toBe(false);
+    expect(conflictsWithFilter(
+      { startRow: 0, endRow: 4, startCol: 10, endCol: 12 },
+      { range: { startRow: 5, endRow: 10, startCol: 0, endCol: 3 }, hasHeader: false, conditions: [{ columnOffset: 0, operator: "isBlank" }] },
+    )).toBe(false);
+  });
+
+  it("has an empty body when a header-only range is sorted", () => {
+    const result = plan([["Header"]], [{ columnOffset: 0, direction: "asc" }], true);
+    expect(result.bodyStartRow).toBe(1);
+    expect(result.bodyRowCount).toBe(0);
+    expect(result.movedRows).toBe(0);
   });
 });
