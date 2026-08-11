@@ -18,6 +18,7 @@
     "bench:cell-store": "node scripts/bench-cell-store.mjs",
     "bench:grid": "node scripts/bench-grid.mjs",
     "bench:filter": "node scripts/bench-filter.mjs",
+    "bench:sort": "pnpm exec playwright test -c playwright.perf.config.ts m4-sort.perf.spec.ts",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",

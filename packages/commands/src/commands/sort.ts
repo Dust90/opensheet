@@ -47,14 +47,17 @@ function collectTranslations(sheet: import("@opensheet/core").Worksheet, range: 
   return moves;
 }
 function applyPermutation(sheet: import("@opensheet/core").Worksheet, range: Range, plan: SortPlan, formulas: readonly FormulaMove[], inverse: boolean): void {
-  const map = inverse ? plan.sourceToDestination : plan.destinationToSource;
+  // One dense column buffer avoids Map hashing while retaining O(rows)
+  // temporary space instead of duplicating the whole sorted rectangle.
+  const sourceForDestination = inverse ? plan.sourceToDestination : plan.destinationToSource;
   for (let col = range.startCol; col <= range.endCol; col += 1) {
-    const values = new Map<number, CellData | undefined>();
-    for (let i = 0; i < plan.bodyRowCount; i += 1) values.set(i, sheet.getCell(plan.bodyStartRow + i, col));
-    for (let dest = 0; dest < plan.bodyRowCount; dest += 1) {
-      const data = values.get(map[dest]!);
-      const row = plan.bodyStartRow + dest;
-      if (data === undefined) sheet.deleteCell(row, col); else sheet.setCell(row, col, { ...data });
+    const values = new Array<CellData | undefined>(plan.bodyRowCount);
+    for (let source = 0; source < plan.bodyRowCount; source += 1) values[source] = sheet.getCell(plan.bodyStartRow + source, col);
+    for (let destination = 0; destination < plan.bodyRowCount; destination += 1) {
+      const data = values[sourceForDestination[destination]!];
+      const row = plan.bodyStartRow + destination;
+      if (data === undefined) sheet.deleteCell(row, col);
+      else sheet.setCell(row, col, data);
     }
   }
   for (const move of formulas) {
