@@ -167,10 +167,11 @@ export class CommandBus {
         const ctx: CommandContext = { workbook: this.workbook, sheetId, source };
         command.validate?.(op.payload, ctx);
         if (command.requiresFreshDerivedState && journal.length > flushedJournalCount) {
-          const derivedStart = derivedJournal.length;
-          this.runBeforeCommitHooks(source, derivedJournal, journal.slice(flushedJournalCount));
+          const flush = { journalCount: journal.length, derivedStart: derivedJournal.length, derivedEnd: derivedJournal.length };
+          flushes.push(flush);
+          try { this.runBeforeCommitHooks(source, derivedJournal, journal.slice(flushedJournalCount)); }
+          finally { flush.derivedEnd = derivedJournal.length; }
           flushedJournalCount = journal.length;
-          flushes.push({ journalCount: flushedJournalCount, derivedStart, derivedEnd: derivedJournal.length });
         }
         const outcome = command.execute(ctx, op.payload);
         results.push(outcome.result);
@@ -182,7 +183,7 @@ export class CommandBus {
           );
         }
       }
-      if (journal.length > flushedJournalCount) { const derivedStart = derivedJournal.length; this.runBeforeCommitHooks(source, derivedJournal, journal.slice(flushedJournalCount)); flushedJournalCount = journal.length; flushes.push({ journalCount: flushedJournalCount, derivedStart, derivedEnd: derivedJournal.length }); }
+      if (journal.length > flushedJournalCount) { const flush = { journalCount: journal.length, derivedStart: derivedJournal.length, derivedEnd: derivedJournal.length }; flushes.push(flush); try { this.runBeforeCommitHooks(source, derivedJournal, journal.slice(flushedJournalCount)); } finally { flush.derivedEnd = derivedJournal.length; } flushedJournalCount = journal.length; }
       this.workbook.endBatch(true);
     } catch (error) {
       // Reverse-replay both journals inside the still-open batch; buffered
@@ -197,8 +198,6 @@ export class CommandBus {
         handledDerived = Math.max(handledDerived, flush.derivedEnd);
         cursor = flush.journalCount;
       }
-      // A hook can throw after writing derived values but before its flush
-      // boundary is recorded; those writes still need rollback.
       for (let i = derivedJournal.length - 1; i >= handledDerived; i -= 1) derivedJournal[i]!.undo(replayCtx);
       for (let i = cursor - 1; i >= 0; i -= 1) journal[i]!.undo(replayCtx);
       this.workbook.endBatch(false);

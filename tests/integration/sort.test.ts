@@ -63,4 +63,15 @@ describe("range.sort", () => {
     history.undo(bus); expect(JSON.stringify(toWorkbookSnapshot(workbook))).toBe(before);
     history.redo(bus); expect(JSON.stringify(toWorkbookSnapshot(workbook))).toBe(sorted);
   });
+
+  it("preserves rollback order when a later derived flush writes then throws", () => {
+    const { workbook, sheet, bus, history, events } = setup();
+    sheet.setCell(0, 0, { value: 2 }); sheet.setCell(1, 0, { value: 1 }); sheet.setCell(0, 1, { value: 20 }); sheet.setCell(1, 1, { value: 10 });
+    const before = JSON.stringify(toWorkbookSnapshot(workbook)); let calls = 0;
+    bus.addBeforeCommitHook(({ derived }) => { calls += 1; derived.setComputedValue(sheet.id, 0, 1, calls === 1 ? 99 : 77); if (calls === 2) throw new Error("derived failure"); });
+    expect(() => bus.applyOperations({ sheetId: sheet.id, atomic: true, operations: [
+      { type: "cell.set", range: "C1", value: 1 }, { type: "range.sort", spec },
+    ] })).toThrow(/derived failure/);
+    expect(JSON.stringify(toWorkbookSnapshot(workbook))).toBe(before); expect(events).toEqual([]); expect(history.undoDepth).toBe(0);
+  });
 });
