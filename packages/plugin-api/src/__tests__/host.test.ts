@@ -52,4 +52,13 @@ describe("PluginHost lifecycle", () => {
     expect(() => host.emitWorkbookLoaded("workbook")).not.toThrow();
     expect(seen).toEqual(["cell.set", "workbook"]);
   });
+
+  it("rejects command ids reserved by the embedding runtime", async () => {
+    const host = createPluginHost({ reservedCommandIds: ["cell.set"] });
+    await expect(host.use({
+      id: "collision",
+      setup(context) { context.commands.registerCommand({ id: "cell.set" }); },
+    })).rejects.toMatchObject({ code: "E_VALIDATION" });
+    expect(host.listCommandContributions()).toEqual([]);
+  });
 });

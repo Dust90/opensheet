@@ -65,6 +65,13 @@ export interface PluginContributions {
   menus: readonly MenuItemContribution[];
 }
 
+export interface ExecutePluginCommandOptions {
+  workbookId: string;
+  sheetId: string;
+  commandId: string;
+  payload: unknown;
+}
+
 export interface OpenSheetAPI {
   createWorkbook(options: { id?: string; name: string }): WorkbookInfo;
 
@@ -102,6 +109,9 @@ export interface OpenSheetAPI {
   disposePlugin(pluginId: string): Promise<void>;
 
   getPluginContributions(): PluginContributions;
+
+  /** Execute one plugin command as a single atomic built-in operation batch. */
+  executePluginCommand(options: ExecutePluginCommandOptions): Promise<ApplyOperationsResult>;
 
   undo(): void;
 

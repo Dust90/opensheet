@@ -3,6 +3,8 @@
 
 export type {
   CommandContribution,
+  PluginCommandContext,
+  PluginOperation,
   CommandHookPayload,
   CommandRegistry,
   FormulaFunctionContribution,
@@ -15,3 +17,4 @@ export type {
   PluginHooks,
 } from "./plugin.js";
 export { createPluginHost, PluginHost } from "./host.js";
+export type { PluginHostOptions } from "./host.js";

@@ -10,6 +10,7 @@ export type {
   ImportCSVOptions,
   ExportCSVOptions,
   PluginContributions,
+  ExecutePluginCommandOptions,
   OpenSheetAPI,
   SheetInfo,
   WorkbookInfo,

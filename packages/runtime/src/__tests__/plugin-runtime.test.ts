@@ -72,4 +72,107 @@ describe("Runtime plugin assembly", () => {
     })).resolves.toMatchObject({ status: "completed" });
     expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1" })).toEqual([["once"]]);
   });
+
+  it("executes plugin operations atomically through one History batch", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    const hooks: string[] = [];
+    await api.usePlugin({
+      id: "increment",
+      setup(context) {
+        context.commands.registerCommand({
+          id: "increment.cells",
+          validate(payload) {
+            if (typeof payload !== "object" || payload === null || !Number.isFinite((payload as { by?: unknown }).by)) {
+              throw new Error("invalid increment payload");
+            }
+          },
+          execute(command, payload) {
+            const by = (payload as { by: number }).by;
+            const current = command.getCell(0, 0);
+            return [
+              { type: "cell.set", range: "A1", value: typeof current === "number" ? current + by : by },
+              { type: "cell.set", range: "B1", value: "plugin" },
+            ];
+          },
+        });
+        context.hooks.onBeforeCommand(({ commandId }) => hooks.push(`before:${commandId}`));
+        context.hooks.onAfterCommand(({ commandId }) => hooks.push(`after:${commandId}`));
+      },
+    });
+
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      operations: [{ type: "cell.set", range: "A1", value: 2 }],
+    });
+    await expect(api.executePluginCommand({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      commandId: "increment.cells",
+      payload: { by: 3 },
+    })).resolves.toMatchObject({ status: "completed" });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1:B1" })).toEqual([[5, "plugin"]]);
+    api.undo();
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1:B1" })).toEqual([[2, null]]);
+    expect(hooks).toContain("before:increment.cells");
+    expect(hooks).toContain("after:increment.cells");
+  });
+
+  it("rolls back every plugin operation when a later generated operation is invalid", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.usePlugin({
+      id: "broken-command",
+      setup(context) {
+        context.commands.registerCommand({
+          id: "broken.command",
+          execute() {
+            return [
+              { type: "cell.set", range: "A1", value: "transient" },
+              { type: "cell.set", range: "ZZ100000", value: "invalid" },
+            ];
+          },
+        });
+      },
+    });
+
+    await expect(api.executePluginCommand({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      commandId: "broken.command",
+      payload: null,
+    })).rejects.toMatchObject({ errorCode: "E_INVALID_RANGE" });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1" })).toEqual([[null]]);
+  });
+
+  it("maps unexpected plugin handler errors to SheetError without running operations", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.usePlugin({
+      id: "throwing-command",
+      setup(context) {
+        context.commands.registerCommand({
+          id: "throwing.command",
+          execute() { throw new Error("plugin failed"); },
+        });
+      },
+    });
+    await expect(api.executePluginCommand({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      commandId: "throwing.command",
+      payload: null,
+    })).rejects.toMatchObject({ code: "E_OP_FAILED", message: "plugin failed" });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1" })).toEqual([[null]]);
+  });
+
+  it("rejects plugins attempting to claim a built-in command id", async () => {
+    const api = createOpenSheet();
+    await expect(api.usePlugin({
+      id: "collision",
+      setup(context) { context.commands.registerCommand({ id: "cell.set" }); },
+    })).rejects.toMatchObject({ code: "E_VALIDATION" });
+    expect(api.getPluginContributions().commands).toEqual([]);
+  });
 });

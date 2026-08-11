@@ -19,6 +19,11 @@ interface InstalledPlugin {
   cleanups: Set<() => void>;
 }
 
+export interface PluginHostOptions {
+  /** Runtime-reserved ids (for example built-in CommandBus command ids). */
+  reservedCommandIds?: readonly string[];
+}
+
 /**
  * The host stores plugin contributions and lets Runtime expose/drain them.
  * Each installed plugin gets a scoped registration context, so dispose (and a
@@ -33,13 +38,15 @@ export class PluginHost implements OpenSheetPluginContext {
   private readonly workbookLoaded = new Set<(workbookId: string) => void>();
   private readonly plugins = new Map<string, InstalledPlugin>();
   private readonly installing = new Set<string>();
+  private readonly reservedCommandIds: ReadonlySet<string>;
 
   readonly commands: CommandRegistry;
   readonly functions: FunctionRegistry;
   readonly menus: MenuRegistry;
   readonly hooks: PluginHooks;
 
-  constructor() {
+  constructor(options?: PluginHostOptions) {
+    this.reservedCommandIds = new Set(options?.reservedCommandIds ?? []);
     const root = this.contextFor(undefined);
     this.commands = root.commands;
     this.functions = root.functions;
@@ -104,6 +111,21 @@ export class PluginHost implements OpenSheetPluginContext {
     const own = (cleanup: () => void) => cleanups?.add(cleanup);
     const commands: CommandRegistry = {
       registerCommand: (contribution) => {
+        if (typeof contribution.id !== "string" || contribution.id.length === 0) {
+          throw new SheetError("E_VALIDATION", "Plugin command contribution requires a non-empty id");
+        }
+        if (this.reservedCommandIds.has(contribution.id)) {
+          throw new SheetError("E_VALIDATION", `Plugin command id is reserved by Runtime: ${contribution.id}`);
+        }
+        if (contribution.description !== undefined && typeof contribution.description !== "string") {
+          throw new SheetError("E_VALIDATION", "Plugin command contribution description must be a string");
+        }
+        if (contribution.validate !== undefined && typeof contribution.validate !== "function") {
+          throw new SheetError("E_VALIDATION", "Plugin command contribution validate must be a function");
+        }
+        if (contribution.execute !== undefined && typeof contribution.execute !== "function") {
+          throw new SheetError("E_VALIDATION", "Plugin command contribution execute must be a function");
+        }
         if (this.commandList.some((candidate) => candidate.id === contribution.id)) {
           throw new SheetError("E_VALIDATION", `Duplicate command contribution: ${contribution.id}`);
         }
@@ -167,6 +189,6 @@ export class PluginHost implements OpenSheetPluginContext {
   }
 }
 
-export function createPluginHost(): PluginHost {
-  return new PluginHost();
+export function createPluginHost(options?: PluginHostOptions): PluginHost {
+  return new PluginHost(options);
 }

@@ -1,6 +1,7 @@
 // createOpenSheet: composition root wiring core + commands + history (+ plugins).
 
 import {
+  ApplyOperationsError,
   CommandBus,
   createDefaultRegistry,
   type ApplyOperationsResult,
@@ -16,11 +17,17 @@ import {
   type CSVWorkerResponse,
   type CSVWorkerTransport,
 } from "@opensheet/import-export";
-import { createPluginHost, type PluginHost } from "@opensheet/plugin-api";
+import {
+  createPluginHost,
+  type PluginCommandContext,
+  type PluginHost,
+  type PluginOperation,
+} from "@opensheet/plugin-api";
 import {
   parseRange,
   SheetError,
   isCellError,
+  isSheetError,
   validateFindOptions,
   type CellAddress,
   type CellValue,
@@ -58,7 +65,9 @@ const DEFAULT_COLUMNS = 26;
  */
 export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
   const entries = new Map<string, WorkbookEntry>();
-  const pluginHost: PluginHost = createPluginHost();
+  const pluginHost: PluginHost = createPluginHost({
+    reservedCommandIds: createDefaultRegistry().list(),
+  });
   let currentId = "";
 
   const listeners = new Set<ChangeListener>();
@@ -386,6 +395,30 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     return result;
   }
 
+  function pluginCommandContext(entry: WorkbookEntry, sheetId: string): PluginCommandContext {
+    const sheet = entry.workbook.getSheet(sheetId);
+    return {
+      workbookId: entry.workbook.id,
+      sheetId,
+      rowCount: sheet.rowCount,
+      columnCount: sheet.columnCount,
+      getCell(row, col) {
+        if (!Number.isSafeInteger(row) || !Number.isSafeInteger(col) || row < 0 || col < 0 || row >= sheet.rowCount || col >= sheet.columnCount) {
+          throw new SheetError("E_INVALID_RANGE", "Plugin command cell address is outside worksheet bounds");
+        }
+        const value = sheet.getCell(row, col)?.value ?? null;
+        return isCellError(value) ? { ...value } : value;
+      },
+    };
+  }
+
+  function pluginCommandOperations(value: unknown): PluginOperation[] {
+    if (!Array.isArray(value)) {
+      throw new SheetError("E_VALIDATION", "Plugin command execute() must return an operation array");
+    }
+    return value as PluginOperation[];
+  }
+
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
       const workbook = new Workbook({ id: id ?? crypto.randomUUID(), name });
@@ -565,6 +598,39 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
         functions: pluginHost.listFunctionContributions(),
         menus: pluginHost.listMenuContributions(),
       };
+    },
+
+    async executePluginCommand(options) {
+      if (typeof options !== "object" || options === null || Array.isArray(options)) {
+        throw new SheetError("E_VALIDATION", "executePluginCommand options must be an object");
+      }
+      if (typeof options.workbookId !== "string" || typeof options.sheetId !== "string" || typeof options.commandId !== "string" || options.commandId.length === 0) {
+        throw new SheetError("E_VALIDATION", "executePluginCommand requires workbookId, sheetId and commandId");
+      }
+      const entry = getEntry(options.workbookId);
+      const contribution = pluginHost.listCommandContributions().find((command) => command.id === options.commandId);
+      if (contribution === undefined) {
+        throw new SheetError("E_UNKNOWN_COMMAND", `Plugin command not found: ${options.commandId}`);
+      }
+      if (contribution.execute === undefined) {
+        throw new SheetError("E_NOT_IMPLEMENTED", `Plugin command has no executable handler: ${options.commandId}`);
+      }
+      pluginHost.emitBeforeCommand({ commandId: options.commandId, source: "api" });
+      try {
+        contribution.validate?.(options.payload);
+        const operations = pluginCommandOperations(contribution.execute(pluginCommandContext(entry, options.sheetId), options.payload));
+        const result = entry.bus.applyOperations({
+          sheetId: options.sheetId,
+          operations,
+          atomic: true,
+          source: "api",
+        });
+        pluginHost.emitAfterCommand({ commandId: options.commandId, source: "api" });
+        return result;
+      } catch (error) {
+        if (isSheetError(error) || error instanceof ApplyOperationsError) throw error;
+        throw new SheetError("E_OP_FAILED", error instanceof Error ? error.message : String(error));
+      }
     },
 
     undo() {
