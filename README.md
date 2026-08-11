@@ -32,6 +32,7 @@ pnpm test              # Vitest 单元测试 + 集成测试
 pnpm test:coverage     # 覆盖率报告
 pnpm test:e2e          # Playwright E2E（自动拉起 demo dev server）
 pnpm bench:cell-store  # CellStore 存储方案 benchmark（手动执行，不属于常规 CI）
+pnpm bench:filter      # M4.2 100k × 20 Filter benchmark（手动执行）
 ```
 
 ## 类型检查、边界与构建

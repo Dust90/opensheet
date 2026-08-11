@@ -17,6 +17,7 @@
     "test:e2e": "playwright test",
     "bench:cell-store": "node scripts/bench-cell-store.mjs",
     "bench:grid": "node scripts/bench-grid.mjs",
+    "bench:filter": "node scripts/bench-filter.mjs",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",

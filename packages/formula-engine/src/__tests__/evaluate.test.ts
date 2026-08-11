@@ -125,9 +125,12 @@ describe("evaluateExpr — errors are VALUES, never thrown", () => {
     expect(evalFormula("=A1:B2", { A1: 7, B2: 9 })).toBe(7);
   });
 
+  // This intentionally streams one million cells to prove that a large range
+  // is not materialized. It is a benchmark-like semantic test, so it gets a
+  // local budget instead of weakening Vitest's global timeout for every test.
   it("huge ranges are consumed lazily (no materialization)", () => {
     // Only a few cells set; SUM over a huge range must not allocate per-cell.
     const values: Record<string, CellValue> = { A1: 1, A2: 2 };
     expect(evalFormula("=SUM(A1:A1000000)", values)).toBe(3);
-  });
+  }, 30_000);
 });

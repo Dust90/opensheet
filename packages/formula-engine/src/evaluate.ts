@@ -68,11 +68,18 @@ function makeRangeValue(range: CellRangeRef, ctx: FormulaContext, budget: Evalua
   return {
     kind: "range",
     *values() {
-      for (const address of iterateRange(range)) {
-        if (budget !== undefined && !budget.consume(1)) {
-          throw { type: "#VALUE!", message: "Formula evaluation limit exceeded" };
+      // Do not route value iteration through iterateRange(): that generator
+      // creates one CellAddress for every cell, followed by another CellRef
+      // for the resolver. Large aggregate ranges are intentionally streamed,
+      // so avoid those short-lived intermediate address objects too.
+      const { row1, col1, row2, col2 } = rangeBounds(range);
+      for (let row = row1; row <= row2; row += 1) {
+        for (let col = col1; col <= col2; col += 1) {
+          if (budget !== undefined && !budget.consume(1)) {
+            throw { type: "#VALUE!", message: "Formula evaluation limit exceeded" };
+          }
+          yield ctx.getCellValue({ row, col, rowAbs: false, colAbs: false });
         }
-        yield ctx.getCellValue({ row: address.row, col: address.col, rowAbs: false, colAbs: false });
       }
     },
     addresses: () => iterateRange(range),

@@ -140,4 +140,54 @@ test.describe("M4.2-F runtime filter projection", () => {
     await page.mouse.click(box.x + 48 + 100 + 10, box.y + 26 + 52 + 10);
     await expect(page.getByText(/Active: B4/)).toBeVisible();
   });
+
+  test("editing outside an active filter range does not evaluate visible rows", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("[data-testid=sheet-grid]")).toBeVisible();
+    await apply(page, [{ type: "filter.apply", spec: { range: { startRow: 0, startCol: 0, endRow: 0, endCol: 0 }, hasHeader: false, conditions: [{ columnOffset: 0, operator: "equals", value: "east" }] } }]);
+    await expectProjectionRows(page, 999);
+
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __api: { getFilterProjectionState(sheetId: string): unknown };
+        __sheetId: string;
+        __filterEvaluationCount?: number;
+      };
+      const original = w.__api.getFilterProjectionState.bind(w.__api);
+      w.__filterEvaluationCount = 0;
+      w.__api.getFilterProjectionState = (id: string) => {
+        w.__filterEvaluationCount! += 1;
+        return original(id);
+      };
+    });
+    await apply(page, [{ type: "cell.set", range: "B2", value: "outside" }]);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __filterEvaluationCount: number }).__filterEvaluationCount)).toBe(0);
+  });
+
+  test("a user and derived update coalesce to one visible-row evaluation", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator("[data-testid=sheet-grid]")).toBeVisible();
+    await apply(page, [
+      { type: "cell.set", range: "A1", value: 10 },
+      { type: "formula.set", range: "B1", formula: "=A1*2" },
+      { type: "filter.apply", spec: { range: { startRow: 0, startCol: 1, endRow: 0, endCol: 1 }, hasHeader: false, conditions: [{ columnOffset: 0, operator: "greaterThan", value: 15 }] } },
+    ]);
+    await expectProjectionRows(page, 1000);
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        __api: { getFilterProjectionState(sheetId: string): unknown };
+        __sheetId: string;
+        __filterEvaluationCount?: number;
+      };
+      const original = w.__api.getFilterProjectionState.bind(w.__api);
+      w.__filterEvaluationCount = 0;
+      w.__api.getFilterProjectionState = (id: string) => {
+        w.__filterEvaluationCount! += 1;
+        return original(id);
+      };
+    });
+    await apply(page, [{ type: "cell.set", range: "A1", value: 2 }]);
+    await expectProjectionRows(page, 999);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __filterEvaluationCount: number }).__filterEvaluationCount)).toBe(1);
+  });
 });

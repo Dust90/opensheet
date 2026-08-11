@@ -16,7 +16,7 @@ try {
 
 execFileSync(
   "pnpm",
-  ["exec", "playwright", "test", "-c", "playwright.perf.config.ts"],
+  ["exec", "playwright", "test", "-c", "playwright.perf.config.ts", "m1-grid.perf.spec.ts"],
   { cwd: root, stdio: "inherit", env: { ...process.env, BENCH_OUT: out } },
 );
 
