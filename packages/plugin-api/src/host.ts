@@ -4,16 +4,25 @@ import { SheetError, type Unsubscribe } from "@opensheet/shared";
 import type {
   CommandContribution,
   CommandHookPayload,
+  CommandRegistry,
   FormulaFunctionContribution,
+  FunctionRegistry,
   MenuItemContribution,
+  MenuRegistry,
   OpenSheetPlugin,
   OpenSheetPluginContext,
+  PluginHooks,
 } from "./plugin.js";
 
+interface InstalledPlugin {
+  plugin: OpenSheetPlugin;
+  cleanups: Set<() => void>;
+}
+
 /**
- * The host stores plugin contributions and lets the runtime drain them into
- * the real systems (command bus, formula engine, UI). Plugins never touch
- * those systems directly.
+ * The host stores plugin contributions and lets Runtime expose/drain them.
+ * Each installed plugin gets a scoped registration context, so dispose (and a
+ * failed async setup) removes its menus, metadata and hooks atomically.
  */
 export class PluginHost implements OpenSheetPluginContext {
   private readonly commandList: CommandContribution[] = [];
@@ -22,74 +31,61 @@ export class PluginHost implements OpenSheetPluginContext {
   private readonly beforeCommand = new Set<(p: CommandHookPayload) => void>();
   private readonly afterCommand = new Set<(p: CommandHookPayload) => void>();
   private readonly workbookLoaded = new Set<(workbookId: string) => void>();
-  private readonly plugins = new Map<string, OpenSheetPlugin>();
+  private readonly plugins = new Map<string, InstalledPlugin>();
+  private readonly installing = new Set<string>();
 
-  readonly commands = {
-    registerCommand: (contribution: CommandContribution): void => {
-      if (this.commandList.some((c) => c.id === contribution.id)) {
-        throw new SheetError("E_VALIDATION", `Duplicate command contribution: ${contribution.id}`);
-      }
-      this.commandList.push(contribution);
-    },
-  };
+  readonly commands: CommandRegistry;
+  readonly functions: FunctionRegistry;
+  readonly menus: MenuRegistry;
+  readonly hooks: PluginHooks;
 
-  readonly functions = {
-    registerFunction: (contribution: FormulaFunctionContribution): void => {
-      if (this.functionList.some((f) => f.name === contribution.name)) {
-        throw new SheetError("E_VALIDATION", `Duplicate function contribution: ${contribution.name}`);
-      }
-      this.functionList.push(contribution);
-    },
-  };
-
-  readonly menus = {
-    registerMenuItem: (contribution: MenuItemContribution): void => {
-      this.menuList.push(contribution);
-    },
-  };
-
-  readonly hooks = {
-    onBeforeCommand: (cb: (p: CommandHookPayload) => void): Unsubscribe => {
-      this.beforeCommand.add(cb);
-      return () => this.beforeCommand.delete(cb);
-    },
-    onAfterCommand: (cb: (p: CommandHookPayload) => void): Unsubscribe => {
-      this.afterCommand.add(cb);
-      return () => this.afterCommand.delete(cb);
-    },
-    onWorkbookLoaded: (cb: (workbookId: string) => void): Unsubscribe => {
-      this.workbookLoaded.add(cb);
-      return () => this.workbookLoaded.delete(cb);
-    },
-  };
+  constructor() {
+    const root = this.contextFor(undefined);
+    this.commands = root.commands;
+    this.functions = root.functions;
+    this.menus = root.menus;
+    this.hooks = root.hooks;
+  }
 
   async use(plugin: OpenSheetPlugin): Promise<void> {
-    if (this.plugins.has(plugin.id)) {
+    if (this.plugins.has(plugin.id) || this.installing.has(plugin.id)) {
       throw new SheetError("E_VALIDATION", `Plugin already installed: ${plugin.id}`);
     }
-    await plugin.setup(this);
-    this.plugins.set(plugin.id, plugin);
+    this.installing.add(plugin.id);
+    const cleanups = new Set<() => void>();
+    try {
+      await plugin.setup(this.contextFor(cleanups));
+      this.plugins.set(plugin.id, { plugin, cleanups });
+    } catch (error) {
+      this.runCleanups(cleanups);
+      throw error;
+    } finally {
+      this.installing.delete(plugin.id);
+    }
   }
 
   async dispose(pluginId: string): Promise<void> {
-    const plugin = this.plugins.get(pluginId);
-    if (plugin === undefined) return;
-    await plugin.dispose?.();
+    const installed = this.plugins.get(pluginId);
+    if (installed === undefined) return;
+    // Preserve the plugin and its contributions if plugin.dispose itself
+    // fails; callers may retry instead of seeing a half-disposed plugin.
+    await installed.plugin.dispose?.();
+    this.runCleanups(installed.cleanups);
     this.plugins.delete(pluginId);
   }
 
-  // --- runtime-facing drains ------------------------------------------------
+  // --- runtime-facing snapshots -------------------------------------------
 
   listCommandContributions(): readonly CommandContribution[] {
-    return this.commandList;
+    return this.commandList.map((contribution) => ({ ...contribution }));
   }
 
   listFunctionContributions(): readonly FormulaFunctionContribution[] {
-    return this.functionList;
+    return this.functionList.map((contribution) => ({ ...contribution }));
   }
 
   listMenuContributions(): readonly MenuItemContribution[] {
-    return this.menuList;
+    return this.menuList.map((contribution) => ({ ...contribution }));
   }
 
   emitBeforeCommand(payload: CommandHookPayload): void {
@@ -102,6 +98,60 @@ export class PluginHost implements OpenSheetPluginContext {
 
   emitWorkbookLoaded(workbookId: string): void {
     for (const cb of this.workbookLoaded) cb(workbookId);
+  }
+
+  private contextFor(cleanups: Set<() => void> | undefined): OpenSheetPluginContext {
+    const own = (cleanup: () => void) => cleanups?.add(cleanup);
+    const commands: CommandRegistry = {
+      registerCommand: (contribution) => {
+        if (this.commandList.some((candidate) => candidate.id === contribution.id)) {
+          throw new SheetError("E_VALIDATION", `Duplicate command contribution: ${contribution.id}`);
+        }
+        const stored = { ...contribution };
+        this.commandList.push(stored);
+        own(() => this.remove(this.commandList, stored));
+      },
+    };
+    const functions: FunctionRegistry = {
+      registerFunction: (contribution) => {
+        if (this.functionList.some((candidate) => candidate.name === contribution.name)) {
+          throw new SheetError("E_VALIDATION", `Duplicate function contribution: ${contribution.name}`);
+        }
+        const stored = { ...contribution };
+        this.functionList.push(stored);
+        own(() => this.remove(this.functionList, stored));
+      },
+    };
+    const menus: MenuRegistry = {
+      registerMenuItem: (contribution) => {
+        const stored = { ...contribution };
+        this.menuList.push(stored);
+        own(() => this.remove(this.menuList, stored));
+      },
+    };
+    const hooks: PluginHooks = {
+      onBeforeCommand: (callback) => this.registerHook(this.beforeCommand, callback, own),
+      onAfterCommand: (callback) => this.registerHook(this.afterCommand, callback, own),
+      onWorkbookLoaded: (callback) => this.registerHook(this.workbookLoaded, callback, own),
+    };
+    return { commands, functions, menus, hooks };
+  }
+
+  private registerHook<T>(set: Set<T>, callback: T, own: (cleanup: () => void) => void): Unsubscribe {
+    set.add(callback);
+    const unsubscribe = () => set.delete(callback);
+    own(unsubscribe);
+    return unsubscribe;
+  }
+
+  private remove<T>(list: T[], value: T): void {
+    const index = list.indexOf(value);
+    if (index >= 0) list.splice(index, 1);
+  }
+
+  private runCleanups(cleanups: Set<() => void>): void {
+    for (const cleanup of [...cleanups].reverse()) cleanup();
+    cleanups.clear();
   }
 }
 

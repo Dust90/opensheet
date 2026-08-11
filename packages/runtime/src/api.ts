@@ -17,6 +17,12 @@ import type {
   ApplyOperationsRequest,
   ApplyOperationsResult,
 } from "@opensheet/commands";
+import type {
+  CommandContribution,
+  FormulaFunctionContribution,
+  MenuItemContribution,
+  OpenSheetPlugin,
+} from "@opensheet/plugin-api";
 
 export interface WorkbookInfo {
   id: string;
@@ -52,6 +58,13 @@ export interface ExportCSVOptions {
   sheetId: string;
 }
 
+/** Readonly snapshots of metadata registered by installed plugins. */
+export interface PluginContributions {
+  commands: readonly CommandContribution[];
+  functions: readonly FormulaFunctionContribution[];
+  menus: readonly MenuItemContribution[];
+}
+
 export interface OpenSheetAPI {
   createWorkbook(options: { id?: string; name: string }): WorkbookInfo;
 
@@ -81,6 +94,14 @@ export interface OpenSheetAPI {
   importCSV(options: ImportCSVOptions): Promise<ImportCSVResult>;
 
   exportCSV(options: ExportCSVOptions): Promise<Blob>;
+
+  /** Install a metadata/hook plugin into this Runtime instance. */
+  usePlugin(plugin: OpenSheetPlugin): Promise<void>;
+
+  /** Dispose a plugin and remove every contribution it registered. */
+  disposePlugin(pluginId: string): Promise<void>;
+
+  getPluginContributions(): PluginContributions;
 
   undo(): void;
 

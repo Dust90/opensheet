@@ -373,6 +373,19 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     return String(value);
   }
 
+  function executePluginCommand<TResult>(
+    entry: WorkbookEntry,
+    commandId: string,
+    payload: unknown,
+    options: { sheetId?: string; source?: "user" | "api" | "undo" | "redo" },
+  ): TResult {
+    const source = options.source ?? "api";
+    pluginHost.emitBeforeCommand({ commandId, source });
+    const result = entry.bus.execute<TResult>(commandId, payload, options);
+    pluginHost.emitAfterCommand({ commandId, source });
+    return result;
+  }
+
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
       const workbook = new Workbook({ id: id ?? crypto.randomUUID(), name });
@@ -410,7 +423,8 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
 
     createSheet({ name, rows, columns }): SheetInfo {
       const entry = getEntry();
-      const result = entry.bus.execute<{ sheetId: string; name: string; rowCount: number; columnCount: number }>(
+      const result = executePluginCommand<{ sheetId: string; name: string; rowCount: number; columnCount: number }>(
+        entry,
         "sheet.create",
         { name, rows, columns },
         { source: "api" },
@@ -502,7 +516,8 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
 
       // The staging sheet only becomes observable through this single command.
       // If either parse/write pass rejects, no existing workbook state changed.
-      const result = entry.bus.execute<{ sheetId: string; rowCount: number; columnCount: number }>(
+      const result = executePluginCommand<{ sheetId: string; rowCount: number; columnCount: number }>(
+        entry,
         "sheet.import",
         { sheet },
         { source: "api" },
@@ -536,14 +551,34 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       return new Blob([stringifyCSV(rows)], { type: "text/csv;charset=utf-8" });
     },
 
+    async usePlugin(plugin) {
+      await pluginHost.use(plugin);
+    },
+
+    async disposePlugin(pluginId) {
+      await pluginHost.dispose(pluginId);
+    },
+
+    getPluginContributions() {
+      return {
+        commands: pluginHost.listCommandContributions(),
+        functions: pluginHost.listFunctionContributions(),
+        menus: pluginHost.listMenuContributions(),
+      };
+    },
+
     undo() {
       const entry = getEntry();
+      pluginHost.emitBeforeCommand({ commandId: "history.undo", source: "undo" });
       entry.history.undo(entry.bus);
+      pluginHost.emitAfterCommand({ commandId: "history.undo", source: "undo" });
     },
 
     redo() {
       const entry = getEntry();
+      pluginHost.emitBeforeCommand({ commandId: "history.redo", source: "redo" });
       entry.history.redo(entry.bus);
+      pluginHost.emitAfterCommand({ commandId: "history.redo", source: "redo" });
     },
 
     onChange(listener: (event: ChangeEvent) => void): Unsubscribe {

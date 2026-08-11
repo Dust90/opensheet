@@ -9,6 +9,7 @@ export type {
   ImportCSVResult,
   ImportCSVOptions,
   ExportCSVOptions,
+  PluginContributions,
   OpenSheetAPI,
   SheetInfo,
   WorkbookInfo,
