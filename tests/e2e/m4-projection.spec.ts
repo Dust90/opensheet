@@ -192,7 +192,11 @@ test.describe("M4.1.1 projection stability", () => {
     await page.waitForTimeout(100);
 
     // Keyboard navigation and Ctrl+End are no-ops — no -1 coordinates, no throws.
-    await grid.click();
+    // The overlay canvas owns pointer input. Click its coordinates directly
+    // so this remains an end-to-end pointer path when the projection paints
+    // no cell content.
+    const emptyBox = await grid.boundingBox();
+    await page.mouse.click(emptyBox!.x + 8, emptyBox!.y + 8);
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Control+End");
     await page.keyboard.press("F2");
