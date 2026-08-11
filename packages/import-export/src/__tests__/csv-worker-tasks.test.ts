@@ -17,6 +17,10 @@ describe("CSVWorkerTaskHandler", () => {
       { type: "done", taskId: "t", rowCount: 3 },
     ]);
   });
+  it("never exceeds the configured batch size for a large single chunk", () => {
+    const messages = run([{ type: "start", taskId: "t" }, { type: "chunk", taskId: "t", text: "a\nb\nc\nd\ne" }, { type: "finish", taskId: "t" }]);
+    expect(messages.filter((message) => message.type === "rows").map((message) => (message as Extract<CSVWorkerResponse, { type: "rows" }>).rows.length)).toEqual([2, 2, 1]);
+  });
   it("rejects duplicate and unknown task operations, and cancel emits no done", () => {
     expect(run([{ type: "start", taskId: "t" }, { type: "start", taskId: "t" }, { type: "cancel", taskId: "t" }, { type: "chunk", taskId: "t", text: "x" }])).toEqual([
       expect.objectContaining({ type: "error", taskId: "t", code: "E_VALIDATION" }),

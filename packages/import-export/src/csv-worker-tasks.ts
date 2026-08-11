@@ -49,10 +49,17 @@ export class CSVWorkerTaskHandler {
   }
 
   private append(taskId: string, task: Task, rows: string[][], emit: CSVWorkerEmit, force: boolean): void {
-    task.pendingRows.push(...rows); task.rowCount += rows.length;
-    while (task.pendingRows.length >= this.batchRows || (force && task.pendingRows.length > 0)) {
-      const count = force ? task.pendingRows.length : this.batchRows;
-      emit({ type: "rows", taskId, rows: task.pendingRows.splice(0, count) });
+    for (const row of rows) {
+      task.pendingRows.push(row);
+      task.rowCount += 1;
+      if (task.pendingRows.length === this.batchRows) {
+        emit({ type: "rows", taskId, rows: task.pendingRows });
+        task.pendingRows = [];
+      }
+    }
+    if (force && task.pendingRows.length > 0) {
+      emit({ type: "rows", taskId, rows: task.pendingRows });
+      task.pendingRows = [];
     }
   }
 
