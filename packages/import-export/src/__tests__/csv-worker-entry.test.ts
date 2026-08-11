@@ -27,4 +27,15 @@ describe("CSV Worker entry", () => {
     const port = new FakePort(); installCSVWorker(port); port.send({ type: "chunk", taskId: "", text: 1 });
     expect(port.sent).toEqual([expect.objectContaining({ type: "error", taskId: "__invalid__", code: "E_VALIDATION" })]);
   });
+  it("cleans up a valid task ID when protocol validation fails", () => {
+    const port = new FakePort(); installCSVWorker(port);
+    port.send({ type: "start", taskId: "t" });
+    port.send({ type: "chunk", taskId: "t", text: 1 });
+    port.send({ type: "start", taskId: "t" });
+    port.send({ type: "finish", taskId: "t" });
+    expect(port.sent).toEqual([
+      expect.objectContaining({ type: "error", taskId: "t", code: "E_VALIDATION" }),
+      { type: "done", taskId: "t", rowCount: 0 },
+    ]);
+  });
 });

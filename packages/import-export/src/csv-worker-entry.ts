@@ -18,6 +18,7 @@ export function installCSVWorker(port: CSVWorkerPort, options?: { batchRows?: nu
     } catch (error) {
       const source = typeof event.data === "object" && event.data !== null ? event.data as { taskId?: unknown } : undefined;
       const taskId = typeof source?.taskId === "string" && source.taskId.length > 0 ? source.taskId : "__invalid__";
+      if (taskId !== "__invalid__") tasks.abort(taskId);
       const mapped = isSheetError(error) ? error : new SheetError("E_OP_FAILED", error instanceof Error ? error.message : String(error));
       port.postMessage({ type: "error", taskId, code: mapped.code, message: mapped.message });
     }

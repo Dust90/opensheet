@@ -41,6 +41,9 @@ export class CSVWorkerTaskHandler {
     }
   }
 
+  /** Abort without emitting: used when the outer postMessage validator fails. */
+  abort(taskId: string): void { this.tasks.delete(taskId); }
+
   private withTask(taskId: string, emit: CSVWorkerEmit, action: (task: Task) => void): void {
     const task = this.tasks.get(taskId);
     if (task === undefined) { this.error(taskId, new SheetError("E_VALIDATION", "CSV worker task does not exist"), emit); return; }
