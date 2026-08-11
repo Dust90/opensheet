@@ -11,6 +11,7 @@ import { createPluginHost, type PluginHost } from "@opensheet/plugin-api";
 import {
   parseRange,
   SheetError,
+  validateFindOptions,
   type CellAddress,
   type CellValue,
   type ChangeEvent,
@@ -175,6 +176,14 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       columnCount: sheet.columnCount,
     };
   }
+  function findCellsForSheet(sheetId: string, options: FindOptions): CellAddress[] {
+    validateFindOptions(options);
+    const sheet = getEntry().workbook.getSheet(sheetId);
+    if (options.scope === "all" || sheet.filter === null) return findCells(sheet, options);
+    const filter = sheet.filter;
+    const visible = new Set(evaluateVisibleRows(sheet, filter));
+    return findCells(sheet, options, row => row < filter.range.startRow || row > filter.range.endRow || visible.has(row));
+  }
 
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
@@ -249,15 +258,22 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     },
 
     searchCells({ sheetId, query, mode }): CellAddress[] {
-      return this.findCells({ sheetId, query, matchCase: true, wholeCell: mode === "exact", searchIn: "values", scope: "all", direction: "forward" });
+      return findCellsForSheet(sheetId, { query, matchCase: true, wholeCell: mode === "exact", searchIn: "values", scope: "all", direction: "forward" });
     },
 
     findCells(options: { sheetId: string } & FindOptions): CellAddress[] {
-      const sheet = getEntry().workbook.getSheet(options.sheetId);
-      if (options.scope === "all" || sheet.filter === null) return findCells(sheet, options);
-      const filter = sheet.filter;
-      const visible = new Set(evaluateVisibleRows(sheet, filter));
-      return findCells(sheet, options, row => row < filter.range.startRow || row > filter.range.endRow || visible.has(row));
+      return findCellsForSheet(options.sheetId, options);
+    },
+
+    findNext(options: { sheetId: string; from?: CellAddress } & FindOptions): CellAddress | null {
+      const matches = findCellsForSheet(options.sheetId, options);
+      if (matches.length === 0) return null;
+      if (options.from === undefined) return matches[0]!;
+      const compare = (a: CellAddress, b: CellAddress) => a.row - b.row || a.col - b.col;
+      const next = options.direction === "forward"
+        ? matches.find(match => compare(match, options.from!) > 0)
+        : matches.find(match => compare(match, options.from!) < 0);
+      return next ?? matches[0]!;
     },
 
     importCSV(): Promise<ImportCSVResult> {

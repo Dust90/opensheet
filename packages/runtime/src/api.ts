@@ -68,6 +68,8 @@ export interface OpenSheetAPI {
 
   findCells(options: { sheetId: string } & FindOptions): CellAddress[];
 
+  findNext(options: { sheetId: string; from?: CellAddress } & FindOptions): CellAddress | null;
+
   importCSV(options: { file: File | Blob | string }): Promise<ImportCSVResult>;
 
   exportCSV(options: { sheetId: string }): Promise<Blob>;
