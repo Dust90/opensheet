@@ -33,6 +33,7 @@ pnpm test:coverage     # 覆盖率报告
 pnpm test:e2e          # Playwright E2E（自动拉起 demo dev server）
 pnpm bench:cell-store  # CellStore 存储方案 benchmark（手动执行，不属于常规 CI）
 pnpm bench:filter      # M4.2 100k × 20 Filter benchmark（手动执行）
+pnpm bench:formula     # M3 默认预算下 900k-cell lazy SUM benchmark（手动执行）
 pnpm bench:sort        # M4.3 100k × 20 Sort benchmark（手动执行）
 pnpm bench:find        # M4.4 100k × 20 Find benchmark（手动执行）
 pnpm bench:dedupe      # M4.5 100k × 20 Dedupe benchmark（手动执行）

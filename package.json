@@ -18,6 +18,7 @@
     "bench:cell-store": "node scripts/bench-cell-store.mjs",
     "bench:grid": "node scripts/bench-grid.mjs",
     "bench:filter": "node scripts/bench-filter.mjs",
+    "bench:formula": "node scripts/bench-formula.mjs",
     "bench:find": "node scripts/bench-find.mjs",
     "bench:csv": "node scripts/bench-csv.mjs",
     "bench:dedupe": "pnpm exec playwright test -c playwright.perf.config.ts m4-dedupe.perf.spec.ts",
