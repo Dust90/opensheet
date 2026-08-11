@@ -9,7 +9,13 @@ export { evaluateExpr } from "./evaluate.js";
 export type { CellRangeValue, EvaluationBudget, FormulaArgument, FormulaContext } from "./evaluate.js";
 export { makeBudget } from "./evaluate.js";
 export { finiteNumber } from "./numeric.js";
-export { FunctionRegistry, createDefaultFunctions, iterateValues } from "./functions.js";
+export {
+  FunctionRegistry,
+  createDefaultFunctions,
+  isSpecialFormName,
+  iterateValues,
+  SPECIAL_FORM_NAMES,
+} from "./functions.js";
 export type { FunctionImpl } from "./functions.js";
 export { DependencyGraph } from "./dependency.js";
 export { exprToString, rewriteFormulaReferences, rewrittenDependencies, translateFormulaReferences } from "./rewrite.js";

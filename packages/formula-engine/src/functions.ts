@@ -4,6 +4,17 @@
 // Control-flow forms (IF/AND/OR) are NOT registered here: the evaluator
 // handles them as special forms with lazy evaluation.
 
+/**
+ * Names evaluated directly by the expression evaluator rather than through
+ * FunctionRegistry. They are still built-ins and must never be claimed by a
+ * plugin function.
+ */
+export const SPECIAL_FORM_NAMES = ["IF", "AND", "OR"] as const;
+
+export function isSpecialFormName(name: string): boolean {
+  return (SPECIAL_FORM_NAMES as readonly string[]).includes(name.toUpperCase());
+}
+
 import type { CellValue } from "@opensheet/shared";
 import { isCellError } from "@opensheet/shared";
 import type { CellRangeValue, FormulaArgument } from "./evaluate.js";

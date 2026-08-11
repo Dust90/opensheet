@@ -13,8 +13,10 @@ import type { CellRangeRef, CellRef, Expr } from "./ast.js";
 import { iterateRange, rangeBounds } from "./ast.js";
 import type { CellAddress, CellValue } from "@opensheet/shared";
 import { isCellError, type CellError } from "@opensheet/shared";
-import { FunctionRegistry } from "./functions.js";
+import { FunctionRegistry, SPECIAL_FORM_NAMES } from "./functions.js";
 import { finiteNumber } from "./numeric.js";
+
+const [IF_NAME, AND_NAME, OR_NAME] = SPECIAL_FORM_NAMES;
 
 export interface FormulaContext {
   /** Read a single cell's value (errors are values, not exceptions). */
@@ -209,7 +211,7 @@ function evaluateFunction(
 ): CellValue {
   const name = expr.name;
   // Special forms — lazy evaluation, args evaluated ONLY on the taken path.
-  if (name === "IF") {
+  if (name === IF_NAME) {
     if (expr.args.length < 2 || expr.args.length > 3) {
       return { type: "#VALUE!", message: "IF needs 2-3 arguments" };
     }
@@ -218,13 +220,13 @@ function evaluateFunction(
     if (expr.args.length >= 3) return evaluateInternal(expr.args[2]!, ctx, registry, budget);
     return false;
   }
-  if (name === "AND") {
+  if (name === AND_NAME) {
     for (const arg of expr.args) {
       if (!isTruthy(evaluateInternal(arg, ctx, registry, budget))) return false;
     }
     return true;
   }
-  if (name === "OR") {
+  if (name === OR_NAME) {
     for (const arg of expr.args) {
       if (isTruthy(evaluateInternal(arg, ctx, registry, budget))) return true;
     }

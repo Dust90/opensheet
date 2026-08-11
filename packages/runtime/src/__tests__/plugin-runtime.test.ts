@@ -291,4 +291,17 @@ describe("Runtime plugin assembly", () => {
     })).rejects.toMatchObject({ code: "E_VALIDATION" });
     expect(api.getPluginContributions().functions).toEqual([]);
   });
+
+  it("rejects plugins attempting to claim lazy special-form names", async () => {
+    const api = createOpenSheet();
+    for (const name of ["if", "AND", "or"]) {
+      await expect(api.usePlugin({
+        id: `special-${name}`,
+        setup(context) {
+          context.functions.registerFunction({ name, minArgs: 0, maxArgs: 0, execute: () => 123 });
+        },
+      })).rejects.toMatchObject({ code: "E_VALIDATION" });
+    }
+    expect(api.getPluginContributions().functions).toEqual([]);
+  });
 });

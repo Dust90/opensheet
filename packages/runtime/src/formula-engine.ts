@@ -24,8 +24,10 @@ import {
   createDefaultFunctions,
   DependencyGraph,
   evaluateExpr,
+  isSpecialFormName,
   makeBudget,
   parseFormula,
+  SPECIAL_FORM_NAMES,
   type FormulaContext,
   type FormulaDependencies,
   type FunctionImpl,
@@ -70,12 +72,12 @@ export class FormulaEngine {
   }
 
   listFunctionNames(): readonly string[] {
-    return this.registry.list();
+    return [...this.registry.list(), ...SPECIAL_FORM_NAMES];
   }
 
   registerPluginFunction(name: string, implementation: FunctionImpl): void {
     const key = name.toUpperCase();
-    if (this.registry.has(key)) {
+    if (isSpecialFormName(key) || this.registry.has(key)) {
       throw new Error(`Formula function already registered: ${key}`);
     }
     this.registry.register(key, implementation);
