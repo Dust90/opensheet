@@ -7,6 +7,8 @@ export type { Persistence, PersistenceOptions, StorageLike } from "./persistence
 export { evaluateVisibleRows, rowMatchesFilter } from "./filter-engine.js";
 export type {
   ImportCSVResult,
+  ImportCSVOptions,
+  ExportCSVOptions,
   OpenSheetAPI,
   SheetInfo,
   WorkbookInfo,

@@ -10,6 +10,7 @@ import { HistoryManager, type HistoryOptions } from "@opensheet/history";
 import {
   createBrowserCSVWorker,
   CSVWorkerTaskHandler,
+  stringifyCSV,
   validateCSVOptions,
   type CSVWorkerRequest,
   type CSVWorkerResponse,
@@ -19,6 +20,7 @@ import { createPluginHost, type PluginHost } from "@opensheet/plugin-api";
 import {
   parseRange,
   SheetError,
+  isCellError,
   validateFindOptions,
   type CellAddress,
   type CellValue,
@@ -351,6 +353,26 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     return `${base} (${suffix})`;
   }
 
+  function validateExportCSVOptions(value: unknown): asserts value is { sheetId: string } {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new SheetError("E_VALIDATION", "exportCSV options must be an object");
+    }
+    const options = value as Record<string, unknown>;
+    if (Object.keys(options).some((key) => key !== "sheetId")) {
+      throw new SheetError("E_VALIDATION", "exportCSV options contains an unknown field");
+    }
+    if (typeof options.sheetId !== "string" || options.sheetId.length === 0) {
+      throw new SheetError("E_VALIDATION", "exportCSV.sheetId must be a non-empty string");
+    }
+  }
+
+  function csvValueText(value: CellValue): string {
+    if (value === null) return "";
+    if (isCellError(value)) return value.type;
+    if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+    return String(value);
+  }
+
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
       const workbook = new Workbook({ id: id ?? crypto.randomUUID(), name });
@@ -488,10 +510,30 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       return { sheetId: result.sheetId, rowCount, columnCount };
     },
 
-    exportCSV(): Promise<Blob> {
-      return Promise.reject(
-        new SheetError("E_NOT_IMPLEMENTED", "CSV export lands in M5 (import-export package)"),
-      );
+    async exportCSV(options): Promise<Blob> {
+      validateExportCSVOptions(options);
+      const sheet = getEntry().workbook.getSheet(options.sheetId);
+      let bottomRow = -1;
+      let rightColumn = -1;
+      // CSV exports values only. A formula's source and style-only cells do
+      // not expand this range; an explicit empty string does.
+      for (const [row, col, data] of sheet.cellEntries()) {
+        if (data.value === null) continue;
+        bottomRow = Math.max(bottomRow, row);
+        rightColumn = Math.max(rightColumn, col);
+      }
+      if (bottomRow < 0 || rightColumn < 0) {
+        return new Blob([], { type: "text/csv;charset=utf-8" });
+      }
+      const rows: string[][] = [];
+      for (let row = 0; row <= bottomRow; row += 1) {
+        const values: string[] = [];
+        for (let col = 0; col <= rightColumn; col += 1) {
+          values.push(csvValueText(sheet.getCell(row, col)?.value ?? null));
+        }
+        rows.push(values);
+      }
+      return new Blob([stringifyCSV(rows)], { type: "text/csv;charset=utf-8" });
     },
 
     undo() {

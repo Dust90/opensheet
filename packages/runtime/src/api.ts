@@ -43,6 +43,15 @@ export interface ImportCSVResult {
   columnCount: number;
 }
 
+export interface ImportCSVOptions {
+  file: Blob;
+  delimiter?: string;
+}
+
+export interface ExportCSVOptions {
+  sheetId: string;
+}
+
 export interface OpenSheetAPI {
   createWorkbook(options: { id?: string; name: string }): WorkbookInfo;
 
@@ -69,9 +78,9 @@ export interface OpenSheetAPI {
   findNext(options: { sheetId: string; from?: CellAddress } & FindOptions): CellAddress | null;
 
   /** Import CSV into a new worksheet at A1; existing worksheets are untouched. */
-  importCSV(options: { file: Blob; delimiter?: string }): Promise<ImportCSVResult>;
+  importCSV(options: ImportCSVOptions): Promise<ImportCSVResult>;
 
-  exportCSV(options: { sheetId: string }): Promise<Blob>;
+  exportCSV(options: ExportCSVOptions): Promise<Blob>;
 
   undo(): void;
 

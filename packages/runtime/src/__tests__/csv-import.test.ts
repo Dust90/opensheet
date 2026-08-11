@@ -85,3 +85,47 @@ describe("OpenSheetAPI.importCSV", () => {
     expect(second.columnCount).toBe(1);
   });
 });
+
+describe("OpenSheetAPI.exportCSV", () => {
+  it("exports A1-based used range, retaining internal blanks and explicit empty strings", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      atomic: true,
+      operations: [
+        { type: "cell.set", range: "A1", value: "a" },
+        { type: "cell.set", range: "C1", value: "" },
+        { type: "cell.set", range: "A3", value: "c" },
+        { type: "range.style", range: "Z100", style: { bold: true } },
+      ],
+    });
+
+    const csv = await api.exportCSV({ sheetId: workbook.activeSheetId });
+    expect(await csv.text()).toBe("a,,\r\n,,\r\nc,,");
+  });
+
+  it("exports formula computed values and a zero-byte Blob for an empty sheet", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      atomic: true,
+      operations: [
+        { type: "cell.set", range: "A1", value: 20 },
+        { type: "cell.set", range: "A2", value: 22 },
+        { type: "formula.set", range: "B1", formula: "=SUM(A1:A2)" },
+        { type: "formula.set", range: "C2", formula: "=1/0" },
+      ],
+    });
+    const csv = await api.exportCSV({ sheetId: workbook.activeSheetId });
+    expect(await csv.text()).toBe("20,42,\r\n22,,#DIV/0!");
+
+    const empty = api.createSheet({ name: "Empty" });
+    const emptyCSV = await api.exportCSV({ sheetId: empty.id });
+    expect(emptyCSV.size).toBe(0);
+    expect(await emptyCSV.text()).toBe("");
+  });
+});
