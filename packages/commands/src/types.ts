@@ -42,6 +42,8 @@ export interface SheetCommand<TPayload = unknown, TResult = void> {
   readonly id: string;
   /** Throw SheetError on invalid payloads. Runs before execute. */
   validate?(payload: TPayload, ctx: CommandContext): void;
+  /** Flush derived hooks from preceding commands before this command reads cached values. */
+  readonly requiresFreshDerivedState?: boolean;
   execute(ctx: CommandContext, payload: TPayload): CommandOutcome<TResult>;
 }
 

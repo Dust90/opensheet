@@ -7,6 +7,7 @@ export interface RangeSortPayload { spec: SortSpec; }
 
 export const rangeSortCommand: SheetCommand<RangeSortPayload> = {
   id: "range.sort",
+  requiresFreshDerivedState: true,
   validate(payload, ctx) {
     if (typeof payload !== "object" || payload === null || !("spec" in payload)) throw new SheetError("E_VALIDATION", "range.sort requires a SortSpec");
     validateSortSpec(payload.spec);

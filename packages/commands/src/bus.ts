@@ -156,6 +156,8 @@ export class CommandBus {
     const derivedJournal: JournalEntry[] = [];
     const results: unknown[] = [];
     let affected = 0;
+    let flushedJournalCount = 0;
+    const flushes: { journalCount: number; derivedStart: number; derivedEnd: number }[] = [];
     let index = -1;
     this.workbook.beginBatch();
     try {
@@ -164,6 +166,12 @@ export class CommandBus {
         const command = this.registry.get(op.type);
         const ctx: CommandContext = { workbook: this.workbook, sheetId, source };
         command.validate?.(op.payload, ctx);
+        if (command.requiresFreshDerivedState && journal.length > flushedJournalCount) {
+          const derivedStart = derivedJournal.length;
+          this.runBeforeCommitHooks(source, derivedJournal, journal.slice(flushedJournalCount));
+          flushedJournalCount = journal.length;
+          flushes.push({ journalCount: flushedJournalCount, derivedStart, derivedEnd: derivedJournal.length });
+        }
         const outcome = command.execute(ctx, op.payload);
         results.push(outcome.result);
         if (outcome.journal !== null) {
@@ -174,18 +182,25 @@ export class CommandBus {
           );
         }
       }
-      this.runBeforeCommitHooks(source, derivedJournal, journal);
+      if (journal.length > flushedJournalCount) { const derivedStart = derivedJournal.length; this.runBeforeCommitHooks(source, derivedJournal, journal.slice(flushedJournalCount)); flushedJournalCount = journal.length; flushes.push({ journalCount: flushedJournalCount, derivedStart, derivedEnd: derivedJournal.length }); }
       this.workbook.endBatch(true);
     } catch (error) {
       // Reverse-replay both journals inside the still-open batch; buffered
       // events from partial execution, hooks and rollback are discarded.
       const replayCtx = { workbook: this.workbook, source };
-      for (let i = derivedJournal.length - 1; i >= 0; i--) {
-        derivedJournal[i]!.undo(replayCtx);
+      let cursor = journal.length;
+      let handledDerived = 0;
+      for (let f = flushes.length - 1; f >= 0; f -= 1) {
+        const flush = flushes[f]!;
+        for (let i = cursor - 1; i >= flush.journalCount; i -= 1) journal[i]!.undo(replayCtx);
+        for (let i = flush.derivedEnd - 1; i >= flush.derivedStart; i -= 1) derivedJournal[i]!.undo(replayCtx);
+        handledDerived = Math.max(handledDerived, flush.derivedEnd);
+        cursor = flush.journalCount;
       }
-      for (let i = journal.length - 1; i >= 0; i--) {
-        journal[i]!.undo(replayCtx);
-      }
+      // A hook can throw after writing derived values but before its flush
+      // boundary is recorded; those writes still need rollback.
+      for (let i = derivedJournal.length - 1; i >= handledDerived; i -= 1) derivedJournal[i]!.undo(replayCtx);
+      for (let i = cursor - 1; i >= 0; i -= 1) journal[i]!.undo(replayCtx);
       this.workbook.endBatch(false);
       if (error instanceof Error) {
         (error as { __failedIndex?: number }).__failedIndex = Math.max(index, 0);
