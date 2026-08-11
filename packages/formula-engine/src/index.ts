@@ -12,5 +12,5 @@ export { finiteNumber } from "./numeric.js";
 export { FunctionRegistry, createDefaultFunctions, iterateValues } from "./functions.js";
 export type { FunctionImpl } from "./functions.js";
 export { DependencyGraph } from "./dependency.js";
-export { exprToString, rewriteFormulaReferences, rewrittenDependencies } from "./rewrite.js";
-export type { StructureChange } from "./rewrite.js";
+export { exprToString, rewriteFormulaReferences, rewrittenDependencies, translateFormulaReferences } from "./rewrite.js";
+export type { FormulaReferenceBounds, StructureChange } from "./rewrite.js";

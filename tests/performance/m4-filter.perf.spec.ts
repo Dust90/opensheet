@@ -13,6 +13,7 @@ interface FrameStats {
 }
 
 const ROWS = 100_000;
+const FILTERED_ROWS = 50_000;
 const WARMUP_FRAMES = 10;
 const MEASURED_FRAMES = 120;
 
@@ -45,11 +46,14 @@ test("filter perf: 100k rows × 20 columns", async ({ page }) => {
   const spec = {
     range: { startRow: 0, startCol: 0, endRow: ROWS - 1, endCol: 19 },
     hasHeader: false,
-    conditions: [{ columnOffset: 0, operator: "contains", value: "row-" }],
+    // Column B cycles through 0..9999. This produces a projection that is
+    // observably different from identity, so the apply timer cannot pass
+    // before the host has rebuilt the FilteredRowProjection.
+    conditions: [{ columnOffset: 1, operator: "greaterThan", value: 4999 }],
   };
   const started = await page.evaluate(() => performance.now());
   await apply(page, [{ type: "filter.apply", spec }]);
-  await expect.poll(() => visualRows(page), { timeout: 30_000 }).toBe(ROWS);
+  await expect.poll(() => visualRows(page), { timeout: 30_000 }).toBe(FILTERED_ROWS);
   const applyMs = (await page.evaluate(() => performance.now())) - started;
 
   const clearStarted = await page.evaluate(() => performance.now());

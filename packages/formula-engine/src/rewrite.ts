@@ -25,6 +25,67 @@ export function rewriteFormulaReferences(formula: string, change: StructureChang
   return "=" + exprToString(rewritten);
 }
 
+export interface FormulaReferenceBounds {
+  rowCount: number;
+  columnCount: number;
+}
+
+/**
+ * Translate a formula together with the cell that owns it (for range sort).
+ * Unlike structure rewriting, every relative axis moves by the supplied
+ * delta; absolute axes remain fixed. A translated reference outside the
+ * destination worksheet becomes #REF!.
+ */
+export function translateFormulaReferences(
+  formula: string,
+  deltaRow: number,
+  deltaCol: number,
+  bounds?: FormulaReferenceBounds,
+): string {
+  const { ast } = parseFormula(formula);
+  const translated = translateExpr(ast, deltaRow, deltaCol, bounds);
+  return "=" + exprToString(translated);
+}
+
+function translateExpr(
+  node: Expr,
+  deltaRow: number,
+  deltaCol: number,
+  bounds: FormulaReferenceBounds | undefined,
+): Expr {
+  switch (node.kind) {
+    case "cell": {
+      const ref = translateCellRef(node.ref, deltaRow, deltaCol, bounds);
+      return ref === null ? { kind: "error", error: { type: "#REF!" } } : { ...node, ref };
+    }
+    case "range": {
+      const start = translateCellRef(node.start, deltaRow, deltaCol, bounds);
+      const end = translateCellRef(node.end, deltaRow, deltaCol, bounds);
+      return start === null || end === null ? { kind: "error", error: { type: "#REF!" } } : { ...node, start, end };
+    }
+    case "binary":
+      return { ...node, left: translateExpr(node.left, deltaRow, deltaCol, bounds), right: translateExpr(node.right, deltaRow, deltaCol, bounds) };
+    case "unary":
+      return { ...node, operand: translateExpr(node.operand, deltaRow, deltaCol, bounds) };
+    case "function":
+      return { ...node, args: node.args.map((arg) => translateExpr(arg, deltaRow, deltaCol, bounds)) };
+    default:
+      return node;
+  }
+}
+
+function translateCellRef(
+  ref: CellRef,
+  deltaRow: number,
+  deltaCol: number,
+  bounds: FormulaReferenceBounds | undefined,
+): CellRef | null {
+  const row = ref.rowAbs ? ref.row : ref.row + deltaRow;
+  const col = ref.colAbs ? ref.col : ref.col + deltaCol;
+  if (row < 0 || col < 0 || (bounds !== undefined && (row >= bounds.rowCount || col >= bounds.columnCount))) return null;
+  return { row, col, rowAbs: ref.rowAbs, colAbs: ref.colAbs };
+}
+
 function rewriteExpr(node: Expr, change: StructureChange): Expr {
   switch (node.kind) {
     case "cell": {
