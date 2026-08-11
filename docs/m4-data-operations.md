@@ -71,7 +71,7 @@ beforeCommit hook（`packages/runtime/src/create-opensheet.ts`）：
 
 - Find 不产生 ChangeEvent，也不进入 History；
 - 筛选操作本身进入 History（Undo 恢复旧 FilterSpec，Redo 再应用）；
-- Sort / Dedupe 各自一次操作一条 History（permutation + 公式原文，不存两份完整 CellData）。
+- Sort / Dedupe 单独执行时均产生可撤销 History：Sort 保存双向 permutation 与公式平移信息；Dedupe 保存从首个变化行开始的 sparse before-image、DedupePlan 与公式平移信息，均不复制两份完整 Range CellData。Command Journal 会被当前 atomic transaction 合并为一个 History batch。
 - History 受 `maxMemoryBytes` 限制；大型操作的 Journal 可能被淘汰，随后 Undo 不再可用。性能基准可显式提高该预算以测量 Undo/Redo 算法本身，普通运行时默认仍为 16 MiB。
 
 ## Filter 与数据修改的冲突（MVP）
