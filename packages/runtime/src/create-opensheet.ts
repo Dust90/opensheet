@@ -184,6 +184,13 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     const visible = new Set(evaluateVisibleRows(sheet, filter));
     return findCells(sheet, options, row => row < filter.range.startRow || row > filter.range.endRow || visible.has(row));
   }
+  function validateFindAnchor(from: CellAddress | undefined, rowCount: number, columnCount: number): void {
+    if (from === undefined) return;
+    if (!Number.isSafeInteger(from.row) || !Number.isSafeInteger(from.col) || from.row < 0 || from.col < 0) {
+      throw new SheetError("E_VALIDATION", "findNext.from must contain non-negative safe integer row/col");
+    }
+    if (from.row >= rowCount || from.col >= columnCount) throw new SheetError("E_INVALID_RANGE", "findNext.from is outside worksheet bounds");
+  }
 
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
@@ -266,6 +273,8 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     },
 
     findNext(options: { sheetId: string; from?: CellAddress } & FindOptions): CellAddress | null {
+      const sheet = getEntry().workbook.getSheet(options.sheetId);
+      validateFindAnchor(options.from, sheet.rowCount, sheet.columnCount);
       const matches = findCellsForSheet(options.sheetId, options);
       if (matches.length === 0) return null;
       if (options.from === undefined) return matches[0]!;

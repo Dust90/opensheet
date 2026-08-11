@@ -213,6 +213,36 @@ export class SheetGrid {
     return this.selection.state;
   }
 
+  /** Return keyboard focus to the grid after a host-owned overlay closes. */
+  focus(): void {
+    this.container.focus();
+  }
+
+  /**
+   * Select a physical cell supplied by a host feature such as Find, then
+   * reveal it through the current visual row projection.  The renderer keeps
+   * the physical/visual conversion private: callers never need canvas rows.
+   */
+  setActiveCell(cell: { row: number; col: number }): void {
+    if (
+      !Number.isSafeInteger(cell.row) ||
+      !Number.isSafeInteger(cell.col) ||
+      cell.row < 0 ||
+      cell.col < 0 ||
+      cell.row >= this.worksheet.rowCount ||
+      cell.col >= this.worksheet.columnCount
+    ) {
+      throw new SheetError("E_INVALID_RANGE", "Active cell is outside worksheet bounds");
+    }
+    if (!this.projection.isVisible(cell.row)) {
+      throw new SheetError("E_VALIDATION", "Cannot select a row hidden by the active projection");
+    }
+    this.selection.setActive(cell);
+    this.scrollActiveIntoView();
+    this.notifySelection();
+    this.scheduleOverlay();
+  }
+
   /** Current projection (identity unless the host installed a filtered one). */
   getRowProjection(): RowProjection {
     return this.projection;

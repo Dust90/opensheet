@@ -23,7 +23,7 @@ export const rangeSortCommand: SheetCommand<RangeSortPayload> = {
     const formulas = collectTranslations(sheet, spec.range, plan);
     applyPermutation(sheet, spec.range, plan, formulas, false);
     emit(ctx.workbook, sheet.id, spec.range, ctx.source);
-    return { result: undefined, journal: journal(ctx.workbook, sheet.id, spec.range, plan, formulas) };
+    return { result: undefined, journal: journal(sheet.id, spec.range, plan, formulas) };
   },
 };
 
@@ -67,4 +67,4 @@ function applyPermutation(sheet: import("@opensheet/core").Worksheet, range: Ran
   }
 }
 function emit(workbook: import("@opensheet/core").Workbook, sheetId: string, range: Range, source: import("@opensheet/shared").ChangeSource): void { workbook.emit({ workbookId: workbook.id, sheetId, changes: [{ range, kind: "reorder" }], source, batch: false }); }
-function journal(workbook: import("@opensheet/core").Workbook, sheetId: string, range: Range, plan: SortPlan, formulas: FormulaMove[]): JournalEntry { return { label: "range.sort", affected: [{ sheetId, range, kind: "reorder" }], approxBytes: 256 + plan.destinationToSource.byteLength + plan.sourceToDestination.byteLength + formulas.reduce((n, f) => n + f.original.length + f.translated.length, 0), undo: c => { const s=c.workbook.getSheet(sheetId); applyPermutation(s, range, plan, formulas, true); emit(c.workbook,sheetId,range,c.source); }, redo: c => { const s=c.workbook.getSheet(sheetId); applyPermutation(s, range, plan, formulas, false); emit(c.workbook,sheetId,range,c.source); } }; }
+function journal(sheetId: string, range: Range, plan: SortPlan, formulas: FormulaMove[]): JournalEntry { return { label: "range.sort", affected: [{ sheetId, range, kind: "reorder" }], approxBytes: 256 + plan.destinationToSource.byteLength + plan.sourceToDestination.byteLength + formulas.reduce((n, f) => n + f.original.length + f.translated.length, 0), undo: c => { const s=c.workbook.getSheet(sheetId); applyPermutation(s, range, plan, formulas, true); emit(c.workbook,sheetId,range,c.source); }, redo: c => { const s=c.workbook.getSheet(sheetId); applyPermutation(s, range, plan, formulas, false); emit(c.workbook,sheetId,range,c.source); } }; }

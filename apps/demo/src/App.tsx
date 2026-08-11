@@ -23,6 +23,10 @@ function App() {
   const [loadedRows, setLoadedRows] = useState(0);
   const [status, setStatus] = useState("");
   const [sheetId, setSheetId] = useState("");
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findSummary, setFindSummary] = useState("");
+  const findInputRef = useRef<HTMLInputElement>(null);
 
   // Boot: restore persisted snapshot or create a fresh workbook.
   useEffect(() => {
@@ -279,6 +283,52 @@ function App() {
   const undo = () => api.undo();
   const redo = () => api.redo();
 
+  const runFind = useCallback((direction: "forward" | "backward") => {
+    if (sheetId === "") return;
+    if (findQuery === "") {
+      setFindSummary("Enter text to find");
+      return;
+    }
+    const options = {
+      sheetId,
+      query: findQuery,
+      matchCase: false,
+      wholeCell: false,
+      searchIn: "values" as const,
+      scope: "visible" as const,
+      direction,
+    };
+    try {
+      const matches = api.findCells(options);
+      const from = gridRef.current?.getSelectionState().active;
+      const match = api.findNext({ ...options, from });
+      if (match === null) {
+        setFindSummary("No results");
+        return;
+      }
+      gridRef.current?.setActiveCell(match);
+      setFindSummary(`${matches.length} result${matches.length === 1 ? "" : "s"}`);
+    } catch (error) {
+      reportError(error);
+    }
+  }, [api, findQuery, reportError, sheetId]);
+
+  useEffect(() => {
+    if (!findOpen) return;
+    findInputRef.current?.focus();
+  }, [findOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <main style={{ fontFamily: "system-ui, sans-serif", padding: 16, height: "100vh", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
       <header style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
@@ -304,10 +354,36 @@ function App() {
         </span>
         <button type="button" onClick={undo}>Undo</button>
         <button type="button" onClick={redo}>Redo</button>
+        <button type="button" onClick={() => setFindOpen(true)}>Find</button>
         <span style={{ marginLeft: "auto", color: "#5f6368", fontSize: 13 }}>
           Active: {activeCell} · {status || bootStatus}
         </span>
       </header>
+      {findOpen && (
+        <div data-testid="find-panel" role="search" style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <input
+            ref={findInputRef}
+            aria-label="Find"
+            placeholder="Find…"
+            value={findQuery}
+            onChange={(event) => setFindQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setFindOpen(false);
+                gridRef.current?.focus();
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                runFind(event.shiftKey ? "backward" : "forward");
+              }
+            }}
+          />
+          <button type="button" aria-label="Find previous" onClick={() => runFind("backward")}>↑</button>
+          <button type="button" aria-label="Find next" onClick={() => runFind("forward")}>↓</button>
+          <button type="button" aria-label="Close find" onClick={() => { setFindOpen(false); gridRef.current?.focus(); }}>×</button>
+          <span data-testid="find-summary" style={{ color: "#5f6368", fontSize: 13 }}>{findSummary}</span>
+        </div>
+      )}
       <div
         ref={containerRef}
         data-testid="sheet-grid"
