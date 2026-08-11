@@ -46,6 +46,14 @@ describe("filter engine", () => {
     expect([...api.getFilterProjectionState(workbook.activeSheetId).visibleRows!]).toEqual([0, 1]);
     await api.applyOperations({ workbookId: workbook.id, sheetId: workbook.activeSheetId, atomic: true, operations: [{ type: "filter.clear" }] });
     expect(api.getFilterProjectionState(workbook.activeSheetId)).toEqual({ filter: null, visibleRows: null });
+    await api.applyOperations({
+      workbookId: workbook.id, sheetId: workbook.activeSheetId, atomic: true,
+      operations: [{ type: "filter.apply", spec: { range: { startRow: 0, startCol: 0, endRow: 2, endCol: 0 }, hasHeader: false, conditions: [{ columnOffset: 0, operator: "equals", value: "missing" }] } }],
+    });
+    const empty = api.getFilterProjectionState(workbook.activeSheetId);
+    expect(empty.filter).not.toBeNull();
+    expect(empty.visibleRows).toBeInstanceOf(Uint32Array);
+    expect(empty.visibleRows).toHaveLength(0);
   });
 
   it("keeps only filter-range rows and leaves range-external rows to the projection", () => {

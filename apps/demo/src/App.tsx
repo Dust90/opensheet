@@ -141,9 +141,11 @@ function App() {
     gridRef.current = grid;
     // M4.2-F: Runtime exposes filter data only; the host owns the renderer
     // projection. Coalesce user + derived events in one microtask refresh.
+    let disposed = false;
     let refreshQueued = false;
     const refreshProjection = () => {
       refreshQueued = false;
+      if (disposed) return;
       const state = api.getFilterProjectionState(sheetId);
       if (state.filter === null) {
         grid.setRowProjection(null);
@@ -156,7 +158,7 @@ function App() {
       }
     };
     const queueProjectionRefresh = () => {
-      if (refreshQueued) return;
+      if (disposed || refreshQueued) return;
       refreshQueued = true;
       queueMicrotask(refreshProjection);
     };
@@ -166,7 +168,9 @@ function App() {
         queueProjectionRefresh();
         return;
       }
-      const filter = api.getFilterProjectionState(sheetId).filter;
+      // This is a range-intersection guard only. Reading WorksheetView.filter
+      // is O(1); getFilterProjectionState() would scan every filter row.
+      const filter = api.getWorksheetView(sheetId).filter;
       if (filter !== null && event.changes.some((change) =>
         change.kind === "cells" &&
         change.range.startRow <= filter.range.endRow && change.range.endRow >= filter.range.startRow &&
@@ -184,6 +188,7 @@ function App() {
     (window as unknown as { __FilteredRowProjection?: typeof FilteredRowProjection }).__FilteredRowProjection =
       FilteredRowProjection;
     return () => {
+      disposed = true;
       projectionUnsubscribe();
       (window as unknown as { __grid?: SheetGrid }).__grid = undefined;
       (window as unknown as { __api?: typeof api }).__api = undefined;
