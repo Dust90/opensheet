@@ -16,9 +16,9 @@ interface OpenSheetPlugin {
 }
 
 interface OpenSheetPluginContext {
-  commands: CommandRegistry;    // 注册命令贡献 { id, description }
-  functions: FunctionRegistry;  // 注册公式函数 { name, minArgs, maxArgs }
-  menus: MenuRegistry;          // 注册菜单/工具栏/右键项
+  commands: CommandRegistry; // 注册元数据或可执行原子命令
+  functions: FunctionRegistry; // 注册元数据或纯同步公式函数
+  menus: MenuRegistry; // 注册菜单/工具栏/右键项
   hooks: {
     onBeforeCommand(cb): Unsubscribe;
     onAfterCommand(cb): Unsubscribe;
@@ -27,19 +27,23 @@ interface OpenSheetPluginContext {
 }
 ```
 
-`PluginHost`（plugin-api 内置）保存贡献清单并派发 hook；runtime 通过 `listCommandContributions()` 等 drain 方法把贡献装入真实注册表。
+`PluginHost`（plugin-api 内置）保存 contribution 清单并派发观察 hook；runtime 将可执行 contribution 装入真实 CommandBus 与每个 Workbook 的 FormulaEngine。
 
-## 一期内置插件（与核心同仓库构建，不走动态加载）
+### 可执行命令
 
-| 插件 | 落地里程碑 | 贡献 |
-|---|---|---|
-| FormulaPlugin | M3 | 28 个公式函数 + derived 重算钩子 |
-| ClipboardPlugin | M2 | 复制/剪切/粘贴命令 + TSV 互转 |
-| FormattingPlugin | M2 | 样式命令 + 工具栏项 |
-| SortFilterPlugin | M4 | 排序/筛选/去重命令 + 菜单项 |
-| CSVPlugin | M5 | CSV 导入导出命令 |
+命令 handler 只获得只读 physical worksheet context，并返回既有 `PluginOperation[]`。Runtime 将返回的 operations 作为一个 `atomic: true` CommandBus batch 执行，因此 validation、formula refresh、rollback、History 与 Undo/Redo 继续使用核心路径。原子性只涵盖返回的 Workbook operations，不涵盖插件自行产生的 HTTP、storage 等外部副作用。
 
-内置插件与核心同仓库构建的唯一目的，是验证"内核不硬编码功能、全部能力可经注册表注入"这一架构假设。
+内置 CommandBus ID 不能被覆盖；插件卸载后，其命令 contribution 立即失效。before/after hooks 只观察一个插件命令，不展开其内部 operations。
+
+### 公式函数
+
+插件公式函数必须纯同步。函数名不区分大小写，不能覆盖内置 registry 函数或 lazy special forms `IF`、`AND`、`OR`。参数为 scalar `CellValue` 或 lazy range iterable；函数直接返回 `CellValue`。普通异常与非法返回值会变为稳定 `#VALUE!`，非有限 number 变为 `#NUM!`，已知 `CellError` 原样传播。
+
+已安装函数会同步到现有和后创建的 Workbook；卸载后相关公式重新计算为 `#NAME?`。函数仍受 FormulaEngine 原有的 per-formula/per-transaction evaluation budget 约束。
+
+### 观察 hooks
+
+hooks 是观察通道，不是 middleware：不能取消核心操作，也不能将已提交操作伪装为失败。一个 observer 抛错会被隔离，不会阻止其他 observer 或 Runtime/Core 操作。
 
 ## 边界保障
 

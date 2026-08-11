@@ -4,7 +4,7 @@
 
 OpenSheet 独立维护、独立构建、独立发布，不依赖任何专有商业电子表格组件。
 
-> **当前状态：M4（排序 / 筛选 / 查找 / 去重）已完成，进入 M5。** 以下标注 *Planned* 的能力尚未实现，以 `docs/architecture.md` 里程碑计划为准。
+> **当前状态：M5（CSV Worker、公开 SDK、插件执行）已完成，进入 M6 发布与性能收口。** 里程碑计划见 `docs/architecture.md`。
 
 ## 环境要求
 
@@ -36,6 +36,7 @@ pnpm bench:filter      # M4.2 100k × 20 Filter benchmark（手动执行）
 pnpm bench:sort        # M4.3 100k × 20 Sort benchmark（手动执行）
 pnpm bench:find        # M4.4 100k × 20 Find benchmark（手动执行）
 pnpm bench:dedupe      # M4.5 100k × 20 Dedupe benchmark（手动执行）
+pnpm bench:csv         # M5 浏览器 Worker 100k × 20 CSV import/export benchmark（手动执行）
 ```
 
 ## 类型检查、边界与构建
@@ -47,9 +48,9 @@ pnpm licenses:check    # 依赖许可证 allowlist 检查
 pnpm build             # 全部包 tsup 构建 + demo 生产构建
 ```
 
-## Planned SDK API
+## Public SDK API
 
-> The following API is planned. `createOpenSheet()` 与 M0 子集（createWorkbook / applyOperations / Snapshot / undo / redo / readRange / searchCells）已在 `@opensheet/runtime` 提供骨架实现；CSV 与完整能力将在 M5 落地。
+`@opensheet/runtime` 提供完整的公开组合根。CSV 导入始终新建 Worksheet 并以 A1 为起点，失败不会留下半成品 Sheet；CSV 导出使用 computed values 的 used range。插件命令返回内置 operation 组成一个原子 History batch；插件公式函数为纯同步函数并复用公式引擎的 lazy range 与预算。
 
 ```ts
 import { createOpenSheet } from "@opensheet/runtime";
@@ -71,6 +72,23 @@ await sheet.applyOperations({
 
 const snapshot = sheet.getWorkbookSnapshot();
 const csv = await sheet.exportCSV({ sheetId: workbook.activeSheetId });
+
+const imported = await sheet.importCSV({
+  file: new File(["Name,Amount\r\nAda,10"], "sales.csv", { type: "text/csv" }),
+});
+
+await sheet.usePlugin({
+  id: "example",
+  setup({ functions }) {
+    functions.registerFunction({
+      name: "DOUBLE",
+      minArgs: 1,
+      maxArgs: 1,
+      execute: ([value]) =>
+        typeof value === "number" ? value * 2 : { type: "#VALUE!" },
+    });
+  },
+});
 ```
 
 ## Target Monorepo Structure
@@ -108,7 +126,7 @@ docs/              # 架构、数据模型、插件系统、性能报告、ADR
 - [x] M2：单元格编辑、剪贴板、行列操作、样式、Undo/Redo UI
 - [x] M3：公式引擎（28 个基础函数，derived-update 通道）
 - [x] M4：排序、筛选、查找、去重（契约见 `docs/m4-data-operations.md`）
-- [ ] M5：CSV 导入导出、完整公开 SDK API
+- [x] M5：CSV Worker 导入导出、完整公开 SDK API、插件生命周期与可执行命令/公式函数
 
 ## 已知限制
 
