@@ -55,7 +55,7 @@ beginBatch
 | M1 ✅ | 双 Canvas 渲染内核（Content+Overlay）、前缀和二分定位、虚拟化、冻结四分区、选区与键盘导航、滚动条 | — |
 | M2 ✅ | DOM 编辑器、剪贴板、行列操作、样式、Undo/Redo UI、Snapshot 持久化 | 1,2,3,5,6,7,12,13,14 |
 | M3 ✅ | 公式引擎（28 函数、依赖图、环检测、derived 通道） | 4 |
-| M4 ▶ | 排序、筛选、查找、去重（追加行移出本轮；契约见 `docs/m4-data-operations.md`） | 8,9 |
+| M4 ✅ | 排序、筛选、查找、去重（追加行移出本轮；契约见 `docs/m4-data-operations.md`） | 8,9 |
 | M5 | CSV Worker、完整 SDK API、插件组装 | 10,11,15,16,17 |
 | M6 | 性能报告、发布、npm 构建 | 全量回归 |
 

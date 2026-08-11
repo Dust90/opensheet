@@ -4,7 +4,7 @@
 
 OpenSheet 独立维护、独立构建、独立发布，不依赖任何专有商业电子表格组件。
 
-> **当前状态：M3（公式引擎）已完成，进入 M4（排序 / 筛选 / 查找 / 去重）。** 以下标注 *Planned* 的能力尚未实现，以 `docs/architecture.md` 里程碑计划为准。
+> **当前状态：M4（排序 / 筛选 / 查找 / 去重）已完成，进入 M5。** 以下标注 *Planned* 的能力尚未实现，以 `docs/architecture.md` 里程碑计划为准。
 
 ## 环境要求
 
@@ -33,6 +33,9 @@ pnpm test:coverage     # 覆盖率报告
 pnpm test:e2e          # Playwright E2E（自动拉起 demo dev server）
 pnpm bench:cell-store  # CellStore 存储方案 benchmark（手动执行，不属于常规 CI）
 pnpm bench:filter      # M4.2 100k × 20 Filter benchmark（手动执行）
+pnpm bench:sort        # M4.3 100k × 20 Sort benchmark（手动执行）
+pnpm bench:find        # M4.4 100k × 20 Find benchmark（手动执行）
+pnpm bench:dedupe      # M4.5 100k × 20 Dedupe benchmark（手动执行）
 ```
 
 ## 类型检查、边界与构建
@@ -104,7 +107,7 @@ docs/              # 架构、数据模型、插件系统、性能报告、ADR
 - [x] M1：双 Canvas 渲染内核（前缀和二分定位、虚拟化、冻结四分区、选区与键盘导航、滚动条；实测 2M 单元格滚动绘制 p95=7.1ms）
 - [x] M2：单元格编辑、剪贴板、行列操作、样式、Undo/Redo UI
 - [x] M3：公式引擎（28 个基础函数，derived-update 通道）
-- [ ] M4：排序、筛选、查找、去重（进行中，契约见 `docs/m4-data-operations.md`）
+- [x] M4：排序、筛选、查找、去重（契约见 `docs/m4-data-operations.md`）
 - [ ] M5：CSV 导入导出、完整公开 SDK API
 
 ## 已知限制

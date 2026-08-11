@@ -1,6 +1,6 @@
 # M4 数据操作契约（排序 / 筛选 / 查找 / 去重）
 
-> 状态：M4.0（契约冻结）已完成。实现按 M4.1 → M4.6 推进，本文档是各子阶段的语义基准。
+> 状态：M4 已完成。本文档保留为排序、筛选、查找与去重的语义基准。
 > 类型定义见 `packages/shared/src/data-operations.ts`。
 
 ## 范围
@@ -13,12 +13,12 @@
 | 子阶段 | 内容 |
 |---|---|
 | M4.0 ✅ | 数据操作契约（本文档）+ `filter`/`reorder` ChangeKind + 同事务预算测试 |
-| M4.1 | RowProjection（视觉行 ↔ 物理行映射，Renderer 全坐标路径接入） |
-| M4.2 | 筛选（compileFilter、filter.apply/clear、Snapshot V2） |
-| M4.3 | 稳定多键排序（公式随行改写、permutation History） |
-| M4.4 | 查找（findCells/findNext、Ctrl+F 面板） |
-| M4.5 | 去重（稳定保留第一条、尾部清空） |
-| M4.6 | 集成 E2E + 性能门槛（100k 行） |
+| M4.1 ✅ | RowProjection（视觉行 ↔ 物理行映射，Renderer 全坐标路径接入） |
+| M4.2 ✅ | 筛选（compileFilter、filter.apply/clear、Snapshot V2） |
+| M4.3 ✅ | 稳定多键排序（公式随行改写、permutation History） |
+| M4.4 ✅ | 查找（findCells/findNext、Ctrl+F 面板） |
+| M4.5 ✅ | 去重（稳定保留第一条、尾部清空） |
+| M4.6 ✅ | 集成 E2E + 性能门槛（100k 行） |
 
 ## 冻结的基础语义
 
@@ -43,11 +43,11 @@ CellError 按 type + message 比较
 去重 Key 的规范化形式：
 
 ```text
-null        → null:
+null        → null
 数字 1      → number:1
 字符串 "1"  → string:1
 布尔 true   → boolean:true
-CellError   → error:<type>:<message>
+CellError   → error:<JSON [type,message]>
 ```
 
 ### 比较与匹配
@@ -72,6 +72,7 @@ beforeCommit hook（`packages/runtime/src/create-opensheet.ts`）：
 - Find 不产生 ChangeEvent，也不进入 History；
 - 筛选操作本身进入 History（Undo 恢复旧 FilterSpec，Redo 再应用）；
 - Sort / Dedupe 各自一次操作一条 History（permutation + 公式原文，不存两份完整 CellData）。
+- History 受 `maxMemoryBytes` 限制；大型操作的 Journal 可能被淘汰，随后 Undo 不再可用。性能基准可显式提高该预算以测量 Undo/Redo 算法本身，普通运行时默认仍为 16 MiB。
 
 ## Filter 与数据修改的冲突（MVP）
 
