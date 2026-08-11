@@ -4,7 +4,9 @@ import type { CSVWorkerRequest, CSVWorkerResponse } from "./csv-worker-protocol.
 export interface CSVWorkerTransport {
   postMessage(message: CSVWorkerRequest): void;
   addEventListener(type: "message", listener: (event: MessageEvent<CSVWorkerResponse>) => void): void;
+  addEventListener(type: "error" | "messageerror", listener: (event: ErrorEvent) => void): void;
   removeEventListener?(type: "message", listener: (event: MessageEvent<CSVWorkerResponse>) => void): void;
+  removeEventListener?(type: "error" | "messageerror", listener: (event: ErrorEvent) => void): void;
   terminate?(): void;
 }
 

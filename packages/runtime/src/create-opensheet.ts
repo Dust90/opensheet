@@ -212,7 +212,15 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     onRows: (rows: readonly string[][]) => void,
   ): Promise<void> {
     const taskId = crypto.randomUUID();
-    const transport = createBrowserCSVWorker() ?? createLocalCSVWorkerTransport();
+    let transport: CSVWorkerTransport;
+    try {
+      transport = createBrowserCSVWorker() ?? createLocalCSVWorkerTransport();
+    } catch (error) {
+      throw new SheetError(
+        "E_OP_FAILED",
+        error instanceof Error && error.message.length > 0 ? error.message : "CSV Worker could not be created",
+      );
+    }
     let workerFailure: SheetError | undefined;
     let resolveCompletion: (() => void) | undefined;
     let rejectCompletion: ((error: unknown) => void) | undefined;
@@ -235,7 +243,20 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
         resolveCompletion?.();
       }
     };
+    const failWorker = (message: string) => {
+      if (workerFailure !== undefined) return;
+      workerFailure = new SheetError("E_OP_FAILED", message);
+      rejectCompletion?.(workerFailure);
+    };
+    const onWorkerError = (event: ErrorEvent) => {
+      failWorker(event.message || "CSV Worker failed");
+    };
+    const onWorkerMessageError = () => {
+      failWorker("CSV Worker message could not be deserialized");
+    };
     transport.addEventListener("message", onMessage);
+    transport.addEventListener("error", onWorkerError);
+    transport.addEventListener("messageerror", onWorkerMessageError);
     const send = (request: CSVWorkerRequest) => transport.postMessage(request);
     const throwIfWorkerFailed = () => {
       if (workerFailure !== undefined) throw workerFailure;
@@ -266,11 +287,18 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       throwIfWorkerFailed();
       await completion;
     } catch (caught) {
-      send({ type: "cancel", taskId });
+      try {
+        send({ type: "cancel", taskId });
+      } catch {
+        // A native Worker failure may make postMessage unavailable. terminate
+        // below still releases the browser task and staging never escaped.
+      }
       throw caught;
     } finally {
       reader.releaseLock();
       transport.removeEventListener?.("message", onMessage);
+      transport.removeEventListener?.("error", onWorkerError);
+      transport.removeEventListener?.("messageerror", onWorkerMessageError);
       transport.terminate?.();
     }
   }
@@ -282,12 +310,17 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       const event = { data: response } as MessageEvent<CSVWorkerResponse>;
       for (const listener of listeners) listener(event);
     };
-    return {
-      postMessage(request) { tasks.handle(request, emit); },
-      addEventListener(_type, listener) { listeners.add(listener); },
-      removeEventListener(_type, listener) { listeners.delete(listener); },
+    const transport = {
+      postMessage(request: CSVWorkerRequest) { tasks.handle(request, emit); },
+      addEventListener(type: string, listener: unknown) {
+        if (type === "message") listeners.add(listener as (event: MessageEvent<CSVWorkerResponse>) => void);
+      },
+      removeEventListener(type: string, listener: unknown) {
+        if (type === "message") listeners.delete(listener as (event: MessageEvent<CSVWorkerResponse>) => void);
+      },
       terminate() { listeners.clear(); },
     };
+    return transport as CSVWorkerTransport;
   }
 
   function validateImportCSVOptions(value: unknown): asserts value is { file: Blob; delimiter?: string } {

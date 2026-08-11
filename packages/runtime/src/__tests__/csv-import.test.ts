@@ -40,6 +40,38 @@ describe("OpenSheetAPI.importCSV", () => {
     expect(events).toEqual([]);
   });
 
+  it("rejects native Worker failures without exposing a partial imported sheet", async () => {
+    const api = createOpenSheet();
+    api.createWorkbook({ name: "Book" });
+    const originalWorker = globalThis.Worker;
+    let terminated = false;
+    class FailingWorker {
+      private readonly listeners = new Set<(event: ErrorEvent) => void>();
+      constructor(..._args: unknown[]) {}
+      postMessage(): void {
+        for (const listener of this.listeners) listener({ message: "worker bootstrap failed" } as ErrorEvent);
+      }
+      addEventListener(type: string, listener: unknown): void {
+        if (type === "error") this.listeners.add(listener as (event: ErrorEvent) => void);
+      }
+      removeEventListener(type: string, listener: unknown): void {
+        if (type === "error") this.listeners.delete(listener as (event: ErrorEvent) => void);
+      }
+      terminate(): void { terminated = true; }
+    }
+    Object.defineProperty(globalThis, "Worker", { configurable: true, value: FailingWorker });
+    try {
+      await expect(api.importCSV({ file: namedCSV("a,b", "broken-worker.csv") })).rejects.toMatchObject({
+        code: "E_OP_FAILED",
+        message: "worker bootstrap failed",
+      });
+      expect(api.listSheets()).toHaveLength(1);
+      expect(terminated).toBe(true);
+    } finally {
+      Object.defineProperty(globalThis, "Worker", { configurable: true, value: originalWorker });
+    }
+  });
+
   it("derives a collision-free fallback name and preserves raw empty fields", async () => {
     const api = createOpenSheet();
     api.createWorkbook({ name: "Book" });
