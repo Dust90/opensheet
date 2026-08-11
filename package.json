@@ -23,6 +23,7 @@
     "bench:dedupe": "pnpm exec playwright test -c playwright.perf.config.ts m4-dedupe.perf.spec.ts",
     "bench:sort": "pnpm exec playwright test -c playwright.perf.config.ts m4-sort.perf.spec.ts",
     "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:pack": "node scripts/check-pack.mjs",
     "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
