@@ -16,14 +16,19 @@ export const rangeSortCommand: SheetCommand<RangeSortPayload> = {
   },
   execute(ctx, payload): CommandOutcome {
     const sheet = ctx.workbook.getSheet(ctx.sheetId);
-    const plan = buildSortPlan(sheet, payload.spec);
+    const spec = cloneSortSpec(payload.spec);
+    const plan = buildSortPlan(sheet, spec);
     if (plan.movedRows === 0) return { result: undefined, journal: null };
-    const formulas = collectTranslations(sheet, payload.spec.range, plan);
-    applyPermutation(sheet, payload.spec.range, plan, formulas, false);
-    emit(ctx.workbook, sheet.id, payload.spec.range, ctx.source);
-    return { result: undefined, journal: journal(ctx.workbook, sheet.id, payload.spec.range, plan, formulas) };
+    const formulas = collectTranslations(sheet, spec.range, plan);
+    applyPermutation(sheet, spec.range, plan, formulas, false);
+    emit(ctx.workbook, sheet.id, spec.range, ctx.source);
+    return { result: undefined, journal: journal(ctx.workbook, sheet.id, spec.range, plan, formulas) };
   },
 };
+
+function cloneSortSpec(spec: SortSpec): SortSpec {
+  return { range: { ...spec.range }, hasHeader: spec.hasHeader, keys: spec.keys.map(key => ({ ...key })), ...(spec.locale === undefined ? {} : { locale: spec.locale }) };
+}
 
 interface FormulaMove { sourceRow: number; row: number; col: number; original: string; translated: string; }
 function collectTranslations(sheet: import("@opensheet/core").Worksheet, range: Range, plan: SortPlan): FormulaMove[] {
