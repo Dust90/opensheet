@@ -23,7 +23,7 @@ export const filterApplyCommand: SheetCommand<FilterApplyPayload> = {
     // Detach now: neither the caller nor a later mutation of the payload can
     // corrupt redo's filter state.
     const next = cloneFilterSpec(payload.spec);
-    const range = { ...next.range };
+    const range = filterAffectedRange(previous, next);
     const apply = (filter: FilterSpec | null, source: typeof ctx.source) => {
       sheet.setFilter(filter);
       emitFilterChange(ctx.workbook, sheet.id, range, source);
@@ -108,5 +108,20 @@ function cloneFilterSpec(spec: Readonly<FilterSpec>): FilterSpec {
     range: { ...spec.range },
     hasHeader: spec.hasHeader,
     conditions: spec.conditions.map((condition) => ({ ...condition })),
+  };
+}
+
+/** Every visibility transition must cover both the former and next ranges. */
+function filterAffectedRange(previous: FilterSpec | null, next: FilterSpec | null): Range {
+  if (previous === null && next === null) {
+    throw new SheetError("E_OP_FAILED", "Filter change requires a previous or next FilterSpec");
+  }
+  if (previous === null) return { ...next!.range };
+  if (next === null) return { ...previous.range };
+  return {
+    startRow: Math.min(previous.range.startRow, next.range.startRow),
+    startCol: Math.min(previous.range.startCol, next.range.startCol),
+    endRow: Math.max(previous.range.endRow, next.range.endRow),
+    endCol: Math.max(previous.range.endCol, next.range.endCol),
   };
 }

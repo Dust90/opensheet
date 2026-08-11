@@ -11,7 +11,7 @@
 // Insert journals are trivial inverses: inserting empty rows/cols is undone
 // by deleting exactly those rows/cols (cells were shifted, not copied).
 
-import { MAX_COLS, MAX_ROWS, SheetError, type CellData } from "@opensheet/shared";
+import { MAX_COLS, MAX_ROWS, SheetError, type CellData, type FilterSpec } from "@opensheet/shared";
 import { rewriteFormulaReferences, type StructureChange } from "@opensheet/formula-engine";
 import type { Worksheet } from "@opensheet/core";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
@@ -38,6 +38,8 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
     },
     execute(ctx, payload): CommandOutcome {
       const sheet = ctx.workbook.getSheet(ctx.sheetId);
+      const previousFilter = cloneFilter(sheet.filter);
+      const filterRange = previousFilter === null ? undefined : { ...previousFilter.range };
       const count = payload.count ?? 1;
       if (payload.at > (axis === "rows" ? sheet.rowCount : sheet.columnCount)) {
         throw new SheetError(
@@ -89,16 +91,19 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
         workbook.emit({
           workbookId: workbook.id,
           sheetId: sheet.id,
-          changes: [
-            {
-              range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 },
-              kind,
-            },
-          ],
+          changes: filterRange === undefined
+            ? [{ range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind }]
+            : [
+                { range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind },
+                { range: filterRange, kind: "filter" },
+              ],
           source,
           batch: false,
         });
       };
+      // M4.2-D: any structural coordinate change invalidates a filter. Clear
+      // before resizing so a formerly valid range can never become invalid.
+      if (previousFilter !== null) sheet.setFilter(null);
       apply();
       rewriteFormulas();
       // Freeze stays numerically identical on insert (the frozen pane grows
@@ -108,11 +113,8 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
       const journal: JournalEntry = {
         label: this.id,
         affected: [
-          {
-            sheetId: sheet.id,
-            range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 },
-            kind,
-          },
+          { sheetId: sheet.id, range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind },
+          ...(filterRange === undefined ? [] : [{ sheetId: sheet.id, range: filterRange, kind: "filter" as const }]),
         ],
         approxBytes: 256 + rewrites.length * 96,
         undo: (rctx) => {
@@ -120,9 +122,12 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
           // restore the original formula sources first.
           undoRewrites();
           undoSingle();
+          // Restore only after the original dimensions exist again.
+          if (previousFilter !== null) sheet.setFilter(previousFilter);
           emit(rctx.workbook, rctx.source);
         },
         redo: (rctx) => {
+          if (previousFilter !== null) sheet.setFilter(null);
           apply();
           rewriteFormulas();
           emit(rctx.workbook, rctx.source);
@@ -157,6 +162,8 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
     },
     execute(ctx, payload): CommandOutcome {
       const sheet = ctx.workbook.getSheet(ctx.sheetId);
+      const previousFilter = cloneFilter(sheet.filter);
+      const filterRange = previousFilter === null ? undefined : { ...previousFilter.range };
       const count = payload.count ?? 1;
       const total = axis === "rows" ? sheet.rowCount : sheet.columnCount;
       if (payload.at + count > total) {
@@ -241,35 +248,38 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
         workbook.emit({
           workbookId: workbook.id,
           sheetId: sheet.id,
-          changes: [
-            {
-              range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 },
-              kind,
-            },
-          ],
+          changes: filterRange === undefined
+            ? [{ range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind }]
+            : [
+                { range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind },
+                { range: filterRange, kind: "filter" },
+              ],
           source,
           batch: false,
         });
       };
+      // Clear before a shrinking mutation so setFilter bounds stay valid.
+      if (previousFilter !== null) sheet.setFilter(null);
       apply();
       rewriteFormulas();
       emit(ctx.workbook, ctx.source);
       const journal: JournalEntry = {
         label: this.id,
         affected: [
-          {
-            sheetId: sheet.id,
-            range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 },
-            kind,
-          },
+          { sheetId: sheet.id, range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind },
+          ...(filterRange === undefined ? [] : [{ sheetId: sheet.id, range: filterRange, kind: "filter" as const }]),
         ],
         approxBytes: 512 + deletedCells.size * 160 + deletedSizes.size * 32 + rewrites.length * 96,
         undo: (rctx) => {
           undoRewrites();
           restoreInverse();
+          // Deleted dimensions must exist before this validated FilterSpec can
+          // be restored (it may extend past the shrunken sheet).
+          if (previousFilter !== null) sheet.setFilter(previousFilter);
           emit(rctx.workbook, rctx.source);
         },
         redo: (rctx) => {
+          if (previousFilter !== null) sheet.setFilter(null);
           apply();
           rewriteFormulas();
           emit(rctx.workbook, rctx.source);
@@ -284,3 +294,13 @@ export const rowInsertCommand = makeStructureCommand("rows");
 export const columnInsertCommand = makeStructureCommand("columns");
 export const rowDeleteCommand = makeDeleteCommand("rows");
 export const columnDeleteCommand = makeDeleteCommand("columns");
+
+function cloneFilter(filter: Readonly<FilterSpec> | null): FilterSpec | null {
+  return filter === null
+    ? null
+    : {
+        range: { ...filter.range },
+        hasHeader: filter.hasHeader,
+        conditions: filter.conditions.map((condition) => ({ ...condition })),
+      };
+}
