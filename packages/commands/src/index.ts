@@ -39,6 +39,8 @@ export {
   rowInsertCommand,
 } from "./commands/structure.js";
 export type { StructurePayload } from "./commands/structure.js";
+export { rangeSortCommand } from "./commands/sort.js";
+export type { RangeSortPayload } from "./commands/sort.js";
 
 import { CommandRegistry } from "./registry.js";
 import { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/cells.js";
@@ -47,6 +49,7 @@ import { sheetFreezeCommand } from "./commands/freeze.js";
 import { rangeStyleCommand } from "./commands/style.js";
 import { formulaSetCommand } from "./commands/formula.js";
 import { filterApplyCommand, filterClearCommand } from "./commands/filter.js";
+import { rangeSortCommand } from "./commands/sort.js";
 import {
   columnDeleteCommand,
   columnInsertCommand,
@@ -66,6 +69,7 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register(formulaSetCommand);
   registry.register(filterApplyCommand);
   registry.register(filterClearCommand);
+  registry.register(rangeSortCommand);
   registry.register(rowInsertCommand);
   registry.register(rowDeleteCommand);
   registry.register(columnInsertCommand);
