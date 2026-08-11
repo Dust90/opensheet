@@ -39,4 +39,17 @@ describe("PluginHost lifecycle", () => {
 
     await expect(host.use({ id: "broken", setup() {} })).resolves.toBeUndefined();
   });
+
+  it("isolates observational hook failures from other observers and the host", () => {
+    const host = createPluginHost();
+    const seen: string[] = [];
+    host.hooks.onBeforeCommand(() => { throw new Error("observer failed"); });
+    host.hooks.onBeforeCommand(({ commandId }) => seen.push(commandId));
+    host.hooks.onWorkbookLoaded(() => { throw new Error("observer failed"); });
+    host.hooks.onWorkbookLoaded((workbookId) => seen.push(workbookId));
+
+    expect(() => host.emitBeforeCommand({ commandId: "cell.set", source: "api" })).not.toThrow();
+    expect(() => host.emitWorkbookLoaded("workbook")).not.toThrow();
+    expect(seen).toEqual(["cell.set", "workbook"]);
+  });
 });

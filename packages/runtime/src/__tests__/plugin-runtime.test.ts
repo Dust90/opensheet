@@ -53,4 +53,23 @@ describe("Runtime plugin assembly", () => {
     ]);
     expect(api.getPluginContributions()).toEqual({ commands: [], functions: [], menus: [] });
   });
+
+  it("does not let observer failures change Runtime command success", async () => {
+    const api = createOpenSheet();
+    await api.usePlugin({
+      id: "broken-observer",
+      setup(context) {
+        context.hooks.onBeforeCommand(() => { throw new Error("before failed"); });
+        context.hooks.onAfterCommand(() => { throw new Error("after failed"); });
+        context.hooks.onWorkbookLoaded(() => { throw new Error("load failed"); });
+      },
+    });
+    const workbook = api.createWorkbook({ name: "Book" });
+    await expect(api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      operations: [{ type: "cell.set", range: "A1", value: "once" }],
+    })).resolves.toMatchObject({ status: "completed" });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1" })).toEqual([["once"]]);
+  });
 });

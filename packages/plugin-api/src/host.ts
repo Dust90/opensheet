@@ -89,15 +89,15 @@ export class PluginHost implements OpenSheetPluginContext {
   }
 
   emitBeforeCommand(payload: CommandHookPayload): void {
-    for (const cb of this.beforeCommand) cb(payload);
+    this.emitSafely(this.beforeCommand, payload);
   }
 
   emitAfterCommand(payload: CommandHookPayload): void {
-    for (const cb of this.afterCommand) cb(payload);
+    this.emitSafely(this.afterCommand, payload);
   }
 
   emitWorkbookLoaded(workbookId: string): void {
-    for (const cb of this.workbookLoaded) cb(workbookId);
+    this.emitSafely(this.workbookLoaded, workbookId);
   }
 
   private contextFor(cleanups: Set<() => void> | undefined): OpenSheetPluginContext {
@@ -152,6 +152,18 @@ export class PluginHost implements OpenSheetPluginContext {
   private runCleanups(cleanups: Set<() => void>): void {
     for (const cleanup of [...cleanups].reverse()) cleanup();
     cleanups.clear();
+  }
+
+  /** Plugin hooks are observational: an extension must never alter core work. */
+  private emitSafely<T>(callbacks: ReadonlySet<(payload: T) => void>, payload: T): void {
+    for (const callback of callbacks) {
+      try {
+        callback(payload);
+      } catch {
+        // A future host-level reporter may observe this, but hook failures
+        // must not make a committed command look like it failed.
+      }
+    }
   }
 }
 
