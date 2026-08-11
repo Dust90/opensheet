@@ -15,6 +15,7 @@ import {
   type CellValue,
   type ChangeEvent,
   type ChangeListener,
+  type FindOptions,
   type SupportedWorkbookSnapshot,
   type Unsubscribe,
   type WorkbookSnapshot,
@@ -22,6 +23,7 @@ import {
 import type { ImportCSVResult, OpenSheetAPI, SheetInfo, WorkbookInfo } from "./api.js";
 import { FormulaEngine, type FormulaEngineOptions } from "./formula-engine.js";
 import { evaluateVisibleRows } from "./filter-engine.js";
+import { findCells } from "./find-engine.js";
 
 export interface OpenSheetOptions {
   history?: HistoryOptions;
@@ -247,14 +249,15 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     },
 
     searchCells({ sheetId, query, mode }): CellAddress[] {
-      const sheet = getEntry().workbook.getSheet(sheetId);
-      const matches: CellAddress[] = [];
-      for (const [row, col, data] of sheet.cellEntries()) {
-        const text = typeof data.value === "string" ? data.value : String(data.value ?? "");
-        const hit = mode === "exact" ? text === query : text.includes(query);
-        if (hit) matches.push({ row, col });
-      }
-      return matches;
+      return this.findCells({ sheetId, query, matchCase: true, wholeCell: mode === "exact", searchIn: "values", scope: "all", direction: "forward" });
+    },
+
+    findCells(options: { sheetId: string } & FindOptions): CellAddress[] {
+      const sheet = getEntry().workbook.getSheet(options.sheetId);
+      if (options.scope === "all" || sheet.filter === null) return findCells(sheet, options);
+      const filter = sheet.filter;
+      const visible = new Set(evaluateVisibleRows(sheet, filter));
+      return findCells(sheet, options, row => row < filter.range.startRow || row > filter.range.endRow || visible.has(row));
     },
 
     importCSV(): Promise<ImportCSVResult> {

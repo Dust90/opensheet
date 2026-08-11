@@ -5,7 +5,6 @@ export type { OpenSheetOptions } from "./create-opensheet.js";
 export { createPersistence, validateSnapshot } from "./persistence.js";
 export type { Persistence, PersistenceOptions, StorageLike } from "./persistence.js";
 export { evaluateVisibleRows, rowMatchesFilter } from "./filter-engine.js";
-export { findCells } from "./find-engine.js";
 export type {
   ImportCSVResult,
   OpenSheetAPI,

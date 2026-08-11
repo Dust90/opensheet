@@ -1,11 +1,14 @@
 import type { WorksheetView } from "@opensheet/core";
 import type { CellAddress, CellValue, FindOptions } from "@opensheet/shared";
 
+export type FindEngineOptions = Pick<FindOptions, "query" | "matchCase" | "wholeCell" | "searchIn" | "direction">;
+
 /** Deterministic sparse find: matching cells are ordered row-major or reverse row-major. */
-export function findCells(sheet: WorksheetView, options: FindOptions): CellAddress[] {
+export function findCells(sheet: WorksheetView, options: FindEngineOptions, includeRow: (row: number) => boolean = () => true): CellAddress[] {
   const needle = normalize(options.query, options.matchCase);
   const matches: CellAddress[] = [];
   for (const [row, col, data] of sheet.cellEntries()) {
+    if (!includeRow(row)) continue;
     const value = options.searchIn === "formulas" ? data.formula : data.value;
     if (value === undefined) continue;
     const text = normalize(displayText(value), options.matchCase);

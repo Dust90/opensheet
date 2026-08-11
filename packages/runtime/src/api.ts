@@ -7,6 +7,7 @@ import type {
   CellValue,
   ChangeEvent,
   FilterSpec,
+  FindOptions,
   Unsubscribe,
   WorkbookSnapshot,
   SupportedWorkbookSnapshot,
@@ -64,6 +65,8 @@ export interface OpenSheetAPI {
     query: string;
     mode: "exact" | "contains";
   }): CellAddress[];
+
+  findCells(options: { sheetId: string } & FindOptions): CellAddress[];
 
   importCSV(options: { file: File | Blob | string }): Promise<ImportCSVResult>;
 
