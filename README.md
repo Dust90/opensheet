@@ -137,3 +137,7 @@ docs/              # 架构、数据模型、插件系统、性能报告、ADR
 ## 许可证
 
 [MIT](./LICENSE)。第三方依赖许可证清单见 [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md)，由 `pnpm licenses:check` 在 CI 中持续校验。
+
+## 发布
+
+M6 的发布前工程检查与性能报告见 [docs/release.md](./docs/release.md) 和 [docs/performance-report.md](./docs/performance-report.md)；待发布的首发版本记录在 [CHANGELOG.md](./CHANGELOG.md)。
