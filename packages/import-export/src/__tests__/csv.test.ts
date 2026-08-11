@@ -12,6 +12,11 @@ describe("CSV codec", () => {
     const rows = [["", "plain", "a,b"], ["quote \" me", "line\nbreak", ""]];
     expect(parseCSV(stringifyCSV(rows))).toEqual(rows);
   });
+  it("accepts an optional trailing record break while preserving trailing empty fields", () => {
+    expect(parseCSV("a,b\r\n")).toEqual([["a", "b"]]);
+    expect(parseCSV("a,b\n")).toEqual([["a", "b"]]);
+    expect(parseCSV("a,")).toEqual([["a", ""]]);
+  });
   it("supports an explicit delimiter and rejects malformed input", () => {
     expect(parseCSV("a;b\n1;2", { delimiter: ";" })).toEqual([["a", "b"], ["1", "2"]]);
     try {
@@ -22,5 +27,8 @@ describe("CSV codec", () => {
       expect((error as SheetError).code).toBe("E_VALIDATION");
     }
     expect(() => stringifyCSV([["x"]], { delimiter: "::" })).toThrow(/delimiter/);
+    expect(() => parseCSV('a"b,c')).toThrow(/quote/);
+    expect(() => parseCSV('"a"x,b')).toThrow(/closing quote/);
+    expect(() => parseCSV("a🙂b", { delimiter: "🙂" })).toThrow(/delimiter/);
   });
 });

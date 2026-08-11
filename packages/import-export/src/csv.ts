@@ -7,7 +7,7 @@ export interface CSVOptions {
 
 function delimiterOf(options?: CSVOptions): string {
   const delimiter = options?.delimiter ?? ",";
-  if (typeof delimiter !== "string" || [...delimiter].length !== 1 || delimiter === "\"" || delimiter === "\r" || delimiter === "\n") {
+  if (typeof delimiter !== "string" || delimiter.length !== 1 || delimiter === "\"" || delimiter === "\r" || delimiter === "\n") {
     throw new SheetError("E_VALIDATION", "CSV delimiter must be one non-quote, non-newline character");
   }
   return delimiter;
@@ -21,27 +21,37 @@ export function parseCSV(text: string, options?: CSVOptions): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
-  let quoted = false;
-  let atFieldStart = true;
+  type State = "fieldStart" | "unquoted" | "quoted" | "afterQuote";
+  let state: State = "fieldStart";
+  let recordJustEnded = false;
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index]!;
-    if (quoted) {
+    if (state === "quoted") {
       if (char === "\"") {
         if (text[index + 1] === "\"") { field += "\""; index += 1; }
-        else quoted = false;
+        else state = "afterQuote";
       } else field += char;
       continue;
     }
-    if (char === "\"" && atFieldStart) { quoted = true; atFieldStart = false; continue; }
-    if (char === delimiter) { row.push(field); field = ""; atFieldStart = true; continue; }
+    if (char === delimiter) {
+      row.push(field); field = ""; state = "fieldStart"; recordJustEnded = false; continue;
+    }
     if (char === "\n" || char === "\r") {
       if (char === "\r" && text[index + 1] === "\n") index += 1;
-      row.push(field); rows.push(row); row = []; field = ""; atFieldStart = true; continue;
+      row.push(field); rows.push(row); row = []; field = ""; state = "fieldStart"; recordJustEnded = true; continue;
     }
-    field += char; atFieldStart = false;
+    if (state === "fieldStart") {
+      if (char === "\"") { state = "quoted"; recordJustEnded = false; continue; }
+      field += char; state = "unquoted"; recordJustEnded = false; continue;
+    }
+    if (state === "afterQuote") {
+      throw new SheetError("E_VALIDATION", "CSV contains characters after a closing quote");
+    }
+    if (char === "\"") throw new SheetError("E_VALIDATION", "CSV contains a quote in an unquoted field");
+    field += char; recordJustEnded = false;
   }
-  if (quoted) throw new SheetError("E_VALIDATION", "CSV contains an unterminated quoted field");
-  row.push(field); rows.push(row);
+  if (state === "quoted") throw new SheetError("E_VALIDATION", "CSV contains an unterminated quoted field");
+  if (!recordJustEnded) { row.push(field); rows.push(row); }
   return rows;
 }
 
