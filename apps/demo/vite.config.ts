@@ -14,6 +14,7 @@ export default defineConfig({
       "@opensheet/core": r("../../packages/core/src/index.ts"),
       "@opensheet/commands": r("../../packages/commands/src/index.ts"),
       "@opensheet/history": r("../../packages/history/src/index.ts"),
+      "@opensheet/import-export": r("../../packages/import-export/src/index.ts"),
       "@opensheet/plugin-api": r("../../packages/plugin-api/src/index.ts"),
       "@opensheet/formula-engine": r("../../packages/formula-engine/src/index.ts"),
       "@opensheet/renderer-canvas": r("../../packages/renderer-canvas/src/index.ts"),
