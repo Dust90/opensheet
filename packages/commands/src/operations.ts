@@ -1,6 +1,6 @@
 // applyOperations wire format (public SDK boundary).
 
-import type { CellPrimitive } from "@opensheet/shared";
+import type { CellPrimitive, FilterSpec } from "@opensheet/shared";
 
 /** Operation set. */
 export type SheetOperation =
@@ -13,7 +13,9 @@ export type SheetOperation =
   | { type: "row.insert"; at: number; count?: number }
   | { type: "row.delete"; at: number; count?: number }
   | { type: "column.insert"; at: number; count?: number }
-  | { type: "column.delete"; at: number; count?: number };
+  | { type: "column.delete"; at: number; count?: number }
+  | { type: "filter.apply"; spec: FilterSpec }
+  | { type: "filter.clear" };
 
 export interface ApplyOperationsRequest {
   workbookId: string;

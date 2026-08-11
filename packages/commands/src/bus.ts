@@ -165,12 +165,14 @@ export class CommandBus {
         const ctx: CommandContext = { workbook: this.workbook, sheetId, source };
         command.validate?.(op.payload, ctx);
         const outcome = command.execute(ctx, op.payload);
-        journal.push(outcome.journal);
         results.push(outcome.result);
-        affected += outcome.journal.affected.reduce(
-          (sum, a) => sum + (a.range.endRow - a.range.startRow + 1) * (a.range.endCol - a.range.startCol + 1),
-          0,
-        );
+        if (outcome.journal !== null) {
+          journal.push(outcome.journal);
+          affected += outcome.journal.affected.reduce(
+            (sum, a) => sum + (a.range.endRow - a.range.startRow + 1) * (a.range.endCol - a.range.startCol + 1),
+            0,
+          );
+        }
       }
       this.runBeforeCommitHooks(source, derivedJournal, journal);
       this.workbook.endBatch(true);

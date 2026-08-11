@@ -62,9 +62,9 @@ function rowMatchesFilterUnchecked(sheet: WorksheetView, physicalRow: number, sp
 }
 
 function matchesCondition(value: import("@opensheet/shared").CellValue, condition: FilterCondition): boolean {
-  // Errors are values for formula display, but never match ordinary filtering
-  // predicates (including notEquals / notBlank).
-  if (isCellError(value)) return false;
+  // Errors are values for formula display. They are not blank, but do not
+  // match ordinary comparison predicates (including notEquals).
+  if (isCellError(value)) return condition.operator === "notBlank";
 
   switch (condition.operator) {
     case "isBlank":
@@ -93,18 +93,20 @@ function matchesCondition(value: import("@opensheet/shared").CellValue, conditio
 function primitivesEqual(left: CellPrimitive, right: CellPrimitive, caseSensitive: boolean): boolean {
   if (typeof left !== typeof right) return false;
   if (typeof left === "string" && typeof right === "string" && !caseSensitive) {
-    return left.toLocaleLowerCase() === right.toLocaleLowerCase();
+    return left.toLowerCase() === right.toLowerCase();
   }
   return left === right;
 }
 
 function containsDisplayText(value: CellPrimitive, needle: CellPrimitive, caseSensitive: boolean): boolean {
-  if (value === null) return false;
+  // A null condition value is never a text search. In particular, avoid the
+  // accidental `"anything".includes("")` match from displaying null as "".
+  if (value === null || needle === null) return false;
   const haystack = displayText(value);
   const query = displayText(needle);
   return caseSensitive
     ? haystack.includes(query)
-    : haystack.toLocaleLowerCase().includes(query.toLocaleLowerCase());
+    : haystack.toLowerCase().includes(query.toLowerCase());
 }
 
 function displayText(value: CellPrimitive): string {

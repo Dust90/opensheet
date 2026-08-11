@@ -38,6 +38,7 @@ function fakeSheet(frozenRows = 0): WorksheetView {
     frozenRows,
     frozenColumns: 0,
     cellCount: cells.size,
+    filter: null,
     getCell: (r, c) => cells.get(`${r}:${c}`),
     *cellEntries() {
       for (const [key, data] of cells) {

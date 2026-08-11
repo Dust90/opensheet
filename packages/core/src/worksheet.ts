@@ -1,7 +1,15 @@
 // Sparse worksheet. Mutations here are SILENT — change events are emitted by
 // the command layer so transactions control exactly what observers see.
 
-import type { CellData, CellStore, CellStoreFactory, Range } from "@opensheet/shared";
+import {
+  SheetError,
+  validateFilterSpec,
+  type CellData,
+  type CellStore,
+  type CellStoreFactory,
+  type FilterSpec,
+  type Range,
+} from "@opensheet/shared";
 import { chunkedCellStoreFactory } from "./cell-store/chunked-store.js";
 import type { WorksheetView } from "./view.js";
 
@@ -23,6 +31,8 @@ export class Worksheet {
   readonly rowHeights = new Map<number, number>();
   readonly columnWidths = new Map<number, number>();
 
+  private _filter: FilterSpec | null = null;
+
   private cells: CellStore;
   private readonly storeFactory: CellStoreFactory;
 
@@ -39,6 +49,33 @@ export class Worksheet {
 
   get cellCount(): number {
     return this.cells.size;
+  }
+
+  /**
+   * Return a detached FilterSpec so read consumers cannot mutate Worksheet
+   * state outside the Command Bus. `Readonly` is the compile-time contract;
+   * cloning is the runtime boundary.
+   */
+  get filter(): Readonly<FilterSpec> | null {
+    return this._filter === null ? null : cloneFilterSpec(this._filter);
+  }
+
+  getFilter(): Readonly<FilterSpec> | null {
+    return this.filter;
+  }
+
+  /** Silent mutation for command/journal use; commands own events/history. */
+  setFilter(filter: FilterSpec | null): void {
+    if (filter !== null) {
+      validateFilterSpec(filter);
+      if (filter.range.endRow >= this.rowCount || filter.range.endCol >= this.columnCount) {
+        throw new SheetError(
+          "E_INVALID_RANGE",
+          `FilterSpec range exceeds worksheet bounds (${this.rowCount} rows × ${this.columnCount} columns)`,
+        );
+      }
+    }
+    this._filter = filter === null ? null : cloneFilterSpec(filter);
   }
 
   /**
@@ -136,6 +173,14 @@ export class Worksheet {
     shiftSizeMap(this.columnWidths, at, -count);
     this.columnCount = Math.max(0, this.columnCount - count);
   }
+}
+
+function cloneFilterSpec(spec: FilterSpec): FilterSpec {
+  return {
+    range: { ...spec.range },
+    hasHeader: spec.hasHeader,
+    conditions: spec.conditions.map((condition) => ({ ...condition })),
+  };
 }
 
 function shiftSizeMap(map: Map<number, number>, at: number, delta: number): void {

@@ -51,6 +51,7 @@ describe("filter engine", () => {
     expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "contains", value: "rue" }))]).toEqual([11]);
     expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "contains", value: "alpha" }))]).toEqual([12]);
     expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "contains", value: "alpha", caseSensitive: true }))]).toEqual([]);
+    expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "contains", value: null }))]).toEqual([]);
   });
 
   it("compares only finite numbers and finite numeric strings", () => {
@@ -73,13 +74,15 @@ describe("filter engine", () => {
     ]))]).toEqual([10]);
   });
 
-  it("uses cached formula results and never matches CellError values", () => {
+  it("uses cached formula results; errors are not blank but never match comparisons", () => {
     const view = sheet(
       { "10:0": 20, "11:0": { type: "#DIV/0!", message: "division" } },
       { "10:0": "=A1*2" },
     );
     expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "greaterThan", value: 15 }))]).toEqual([10]);
     expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "notEquals", value: 20 }))]).toEqual([12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "isBlank" }))]).toEqual([12, 13, 14, 15, 16, 17, 18, 19, 20]);
+    expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "notBlank" }))]).toEqual([10, 11]);
   });
 
   it("keeps the header visible even when it does not match, including an all-hidden data result", () => {

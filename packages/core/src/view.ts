@@ -1,7 +1,7 @@
 // Read-only view contracts. Renderers (M1) and external read paths depend on
 // these views only — mutation is possible exclusively through the Command Bus.
 
-import type { CellData, CellStyle, Range } from "@opensheet/shared";
+import type { CellData, CellStyle, FilterSpec, Range } from "@opensheet/shared";
 
 /**
  * Read-only view of a worksheet. Implementations may return internal objects
@@ -16,6 +16,8 @@ export interface WorksheetView {
   readonly frozenRows: number;
   readonly frozenColumns: number;
   readonly cellCount: number;
+  /** Active row-visibility filter, or null when none is installed. */
+  readonly filter: Readonly<FilterSpec> | null;
 
   getCell(row: number, col: number): Readonly<CellData> | undefined;
 

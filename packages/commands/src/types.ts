@@ -34,7 +34,8 @@ export interface CommandContext {
 
 export interface CommandOutcome<TResult = void> {
   readonly result: TResult;
-  readonly journal: JournalEntry;
+  /** Null marks a semantic no-op: no event and no history entry. */
+  readonly journal: JournalEntry | null;
 }
 
 export interface SheetCommand<TPayload = unknown, TResult = void> {

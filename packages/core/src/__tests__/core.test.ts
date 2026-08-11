@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { parseRange } from "@opensheet/shared";
+import { parseRange, SheetError, type FilterSpec } from "@opensheet/shared";
 import {
   ChunkedCellStore,
   NumberKeyCellStore,
@@ -74,6 +74,46 @@ describe("row/column structure", () => {
     expect(sheet.getCell(0, 3)?.value).toBe("c");
     sheet.deleteColumns(1, 1);
     expect(sheet.getCell(0, 2)?.value).toBe("c");
+  });
+});
+
+describe("worksheet filter state", () => {
+  function makeFilter(): FilterSpec {
+    return {
+      range: { startRow: 2, startCol: 1, endRow: 8, endCol: 3 },
+      hasHeader: true,
+      conditions: [{ columnOffset: 0, operator: "equals", value: "east" }],
+    };
+  }
+
+  it("starts empty and clones both incoming and outgoing FilterSpecs", () => {
+    const sheet = makeSheet();
+    const spec = makeFilter();
+    expect(sheet.filter).toBeNull();
+    sheet.setFilter(spec);
+    spec.range.startRow = 7;
+    (spec.conditions[0] as { value?: string }).value = "mutated";
+    expect(sheet.filter).toEqual({
+      range: { startRow: 2, startCol: 1, endRow: 8, endCol: 3 },
+      hasHeader: true,
+      conditions: [{ columnOffset: 0, operator: "equals", value: "east" }],
+    });
+
+    const exposed = sheet.filter! as FilterSpec;
+    exposed.range.endRow = 99;
+    (exposed.conditions[0] as { value?: string }).value = "outside mutation";
+    expect(sheet.filter!.range.endRow).toBe(8);
+    expect(sheet.filter!.conditions[0]!.value).toBe("east");
+  });
+
+  it("validates bounds and keeps filters independent per worksheet", () => {
+    const first = makeSheet();
+    const second = new Worksheet({ id: "s2", name: "Sheet2", rowCount: 100, columnCount: 26 });
+    const spec = makeFilter();
+    first.setFilter(spec);
+    expect(second.filter).toBeNull();
+    expect(() => second.setFilter({ ...spec, range: { ...spec.range, endRow: 100 } })).toThrow(SheetError);
+    expect(first.filter).not.toBeNull();
   });
 });
 
