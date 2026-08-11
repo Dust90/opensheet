@@ -4,7 +4,7 @@
 // - Blank: `null` is the ONLY true blank. "" is an ordinary string. null !== "".
 // - Types: number 1 !== string "1"; booleans never dedupe-equal numbers;
 //   CellError compares by (type + message).
-// - Conflict: sort/dedupe whose range overlaps an active filter range are
+// - Conflict: sort/dedupe whose row span overlaps an active filter range are
 //   REJECTED — hidden rows must never be mutated invisibly (MVP rule).
 //
 // M4.0.1: validators accept `unknown` (SDK / plugin / Snapshot JSON input is
@@ -170,6 +170,11 @@ export function validateSortSpec(value: unknown): asserts value is SortSpec {
   if (value.locale !== undefined) {
     if (typeof value.locale !== "string" || value.locale.length === 0) {
       fail(`${what}.locale: must be a non-empty string when present`);
+    }
+    try {
+      new Intl.Collator(value.locale);
+    } catch {
+      fail(`${what}.locale: must be a valid Intl.Collator locale`);
     }
   }
   if (!Array.isArray(value.keys) || value.keys.length === 0) {

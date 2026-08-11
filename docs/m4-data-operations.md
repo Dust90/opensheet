@@ -77,7 +77,9 @@ beforeCommit hook（`packages/runtime/src/create-opensheet.ts`）：
 
 ```text
 存在活动筛选时：
-range.sort 与 range.dedupe 若和筛选范围重叠 → 拒绝（原子拒绝：零修改、零历史）
+range.sort 与 range.dedupe 只要其**行跨度**与筛选范围的行跨度相交 → 拒绝
+（原子拒绝：零修改、零历史）。列是否重叠不影响该规则：筛选隐藏的是整行，
+因此不允许修改任何隐藏行中的其它列。
 ```
 
 理由：用户看不到隐藏行时，不允许修改隐藏数据。

@@ -40,7 +40,7 @@ export function translateFormulaReferences(
   formula: string,
   deltaRow: number,
   deltaCol: number,
-  bounds?: FormulaReferenceBounds,
+  bounds: FormulaReferenceBounds,
 ): string {
   const { ast } = parseFormula(formula);
   const translated = translateExpr(ast, deltaRow, deltaCol, bounds);
@@ -51,7 +51,7 @@ function translateExpr(
   node: Expr,
   deltaRow: number,
   deltaCol: number,
-  bounds: FormulaReferenceBounds | undefined,
+  bounds: FormulaReferenceBounds,
 ): Expr {
   switch (node.kind) {
     case "cell": {
@@ -78,11 +78,11 @@ function translateCellRef(
   ref: CellRef,
   deltaRow: number,
   deltaCol: number,
-  bounds: FormulaReferenceBounds | undefined,
+  bounds: FormulaReferenceBounds,
 ): CellRef | null {
   const row = ref.rowAbs ? ref.row : ref.row + deltaRow;
   const col = ref.colAbs ? ref.col : ref.col + deltaCol;
-  if (row < 0 || col < 0 || (bounds !== undefined && (row >= bounds.rowCount || col >= bounds.columnCount))) return null;
+  if (row < 0 || col < 0 || row >= bounds.rowCount || col >= bounds.columnCount) return null;
   return { row, col, rowAbs: ref.rowAbs, colAbs: ref.colAbs };
 }
 

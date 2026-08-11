@@ -39,6 +39,8 @@ export {
   rowInsertCommand,
 } from "./commands/structure.js";
 export type { StructurePayload } from "./commands/structure.js";
+export { buildSortPlan, conflictsWithFilter, DEFAULT_SORT_LOCALE, rowSpansIntersect } from "./sort-plan.js";
+export type { SortPlan } from "./sort-plan.js";
 
 import { CommandRegistry } from "./registry.js";
 import { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/cells.js";
