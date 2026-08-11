@@ -41,6 +41,8 @@ export {
 export type { StructurePayload } from "./commands/structure.js";
 export { rangeSortCommand } from "./commands/sort.js";
 export type { RangeSortPayload } from "./commands/sort.js";
+export { rangeDedupeCommand } from "./commands/dedupe.js";
+export type { RangeDedupePayload } from "./commands/dedupe.js";
 
 import { CommandRegistry } from "./registry.js";
 import { cellClearCommand, cellSetCommand, rangeWriteCommand } from "./commands/cells.js";
@@ -50,6 +52,7 @@ import { rangeStyleCommand } from "./commands/style.js";
 import { formulaSetCommand } from "./commands/formula.js";
 import { filterApplyCommand, filterClearCommand } from "./commands/filter.js";
 import { rangeSortCommand } from "./commands/sort.js";
+import { rangeDedupeCommand } from "./commands/dedupe.js";
 import {
   columnDeleteCommand,
   columnInsertCommand,
@@ -70,6 +73,7 @@ export function createDefaultRegistry(): CommandRegistry {
   registry.register(filterApplyCommand);
   registry.register(filterClearCommand);
   registry.register(rangeSortCommand);
+  registry.register(rangeDedupeCommand);
   registry.register(rowInsertCommand);
   registry.register(rowDeleteCommand);
   registry.register(columnInsertCommand);

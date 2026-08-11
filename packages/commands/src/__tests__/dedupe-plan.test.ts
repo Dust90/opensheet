@@ -42,6 +42,17 @@ describe("buildDedupePlan", () => {
     expect([...plan(values, [0]).keptSourceOffsets]).toEqual([0]);
   });
 
+  it("uses computed formula values rather than formula source as keys", () => {
+    const source = sheet([["left", 10], ["right", 10]]);
+    source.setCell(0, 1, { value: 10, formula: "=A1" });
+    source.setCell(1, 1, { value: 10, formula: "=A2*2" });
+    const result = buildDedupePlan(source, {
+      range: { startRow: 0, startCol: 0, endRow: 1, endCol: 1 }, hasHeader: false, keyColumnOffsets: [1], keep: "first",
+    });
+    expect([...result.keptSourceOffsets]).toEqual([0]);
+    expect([...result.removedSourceOffsets]).toEqual([1]);
+  });
+
   it("keeps a header fixed and treats a header-only range as an empty body", () => {
     const withHeader = plan([["Name"], ["a"], ["a"], ["b"]], [], true);
     expect(withHeader.bodyStartRow).toBe(1);

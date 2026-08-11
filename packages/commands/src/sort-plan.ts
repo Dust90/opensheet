@@ -4,8 +4,6 @@ import {
   SheetError,
   validateSortSpec,
   type CellValue,
-  type FilterSpec,
-  type Range,
   type SortSpec,
 } from "@opensheet/shared";
 
@@ -27,14 +25,7 @@ interface SortRow {
   keys: CellValue[];
 }
 
-/** True when an operation would touch rows hidden by the active filter. */
-export function rowSpansIntersect(left: Pick<Range, "startRow" | "endRow">, right: Pick<Range, "startRow" | "endRow">): boolean {
-  return left.startRow <= right.endRow && left.endRow >= right.startRow;
-}
-
-export function conflictsWithFilter(range: Range, filter: Readonly<FilterSpec> | null): boolean {
-  return filter !== null && rowSpansIntersect(range, filter.range);
-}
+export { conflictsWithFilter, rowSpansIntersect } from "./data-operation-conflicts.js";
 
 /** Build a deterministic, stable row permutation without mutating the sheet. */
 export function buildSortPlan(sheet: WorksheetView, spec: SortSpec): SortPlan {
