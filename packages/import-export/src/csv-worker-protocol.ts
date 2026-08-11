@@ -1,5 +1,5 @@
 import { SheetError, type SheetErrorCode } from "@opensheet/shared";
-import type { CSVOptions } from "./csv.js";
+import { validateCSVOptions, type CSVOptions } from "./csv.js";
 
 export type CSVWorkerRequest =
   | { type: "start"; taskId: string; options?: CSVOptions }
@@ -22,9 +22,7 @@ export function validateCSVWorkerRequest(value: unknown): asserts value is CSVWo
   const request = value as Record<string, unknown>;
   requireTaskId(request.taskId);
   if (request.type === "start") {
-    if (request.options !== undefined && (typeof request.options !== "object" || request.options === null || Array.isArray(request.options))) {
-      throw new SheetError("E_VALIDATION", "CSV worker start options must be an object");
-    }
+    if (request.options !== undefined) validateCSVOptions(request.options);
     return;
   }
   if (request.type === "chunk") {

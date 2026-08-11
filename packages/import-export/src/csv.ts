@@ -5,11 +5,22 @@ export interface CSVOptions {
   delimiter?: string;
 }
 
-function delimiterOf(options?: CSVOptions): string {
-  const delimiter = options?.delimiter ?? ",";
-  if (typeof delimiter !== "string" || delimiter.length !== 1 || delimiter === "\"" || delimiter === "\r" || delimiter === "\n") {
+export function validateCSVOptions(value: unknown): asserts value is CSVOptions {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new SheetError("E_VALIDATION", "CSV options must be an object");
+  }
+  const options = value as Record<string, unknown>;
+  for (const key of Object.keys(options)) {
+    if (key !== "delimiter") throw new SheetError("E_VALIDATION", `CSV options contains unknown field "${key}"`);
+  }
+  if (options.delimiter !== undefined && (typeof options.delimiter !== "string" || options.delimiter.length !== 1 || options.delimiter === "\"" || options.delimiter === "\r" || options.delimiter === "\n")) {
     throw new SheetError("E_VALIDATION", "CSV delimiter must be one non-quote, non-newline character");
   }
+}
+
+function delimiterOf(options?: CSVOptions): string {
+  if (options !== undefined) validateCSVOptions(options);
+  const delimiter = options?.delimiter ?? ",";
   return delimiter;
 }
 

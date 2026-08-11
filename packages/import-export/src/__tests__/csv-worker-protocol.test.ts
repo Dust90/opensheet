@@ -10,7 +10,7 @@ describe("CSV worker protocol", () => {
     expect(() => validateCSVWorkerRequest({ type: "cancel", taskId: "t" })).not.toThrow();
   });
   it("rejects malformed task IDs, chunks, options, and message types", () => {
-    for (const value of [null, { type: "chunk", taskId: "", text: "x" }, { type: "chunk", taskId: "t", text: 1 }, { type: "start", taskId: "t", options: [] }, { type: "wat", taskId: "t" }]) {
+    for (const value of [null, { type: "chunk", taskId: "", text: "x" }, { type: "chunk", taskId: "t", text: 1 }, { type: "start", taskId: "t", options: [] }, { type: "start", taskId: "t", options: { delimiter: "::" } }, { type: "start", taskId: "t", options: { delimiter: 1 } }, { type: "start", taskId: "t", options: { delimeter: ";" } }, { type: "wat", taskId: "t" }]) {
       try { validateCSVWorkerRequest(value); throw new Error("expected validation failure"); }
       catch (error) { expect(error).toBeInstanceOf(SheetError); expect((error as SheetError).code).toBe("E_VALIDATION"); }
     }
