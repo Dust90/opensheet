@@ -15,6 +15,7 @@ import {
   type CellValue,
   type ChangeEvent,
   type ChangeListener,
+  type SupportedWorkbookSnapshot,
   type Unsubscribe,
   type WorkbookSnapshot,
 } from "@opensheet/shared";
@@ -188,7 +189,7 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       return toWorkbookInfo(workbook);
     },
 
-    loadWorkbook(snapshot: WorkbookSnapshot) {
+    loadWorkbook(snapshot: SupportedWorkbookSnapshot) {
       const workbook = workbookFromSnapshot(snapshot);
       const entry = registerEntry(workbook);
       // M3: rebuild the dependency graph from the loaded formulas and

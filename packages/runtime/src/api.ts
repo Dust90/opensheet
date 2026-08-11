@@ -8,6 +8,7 @@ import type {
   ChangeEvent,
   Unsubscribe,
   WorkbookSnapshot,
+  SupportedWorkbookSnapshot,
 } from "@opensheet/shared";
 import type { WorksheetView } from "@opensheet/core";
 import type {
@@ -39,7 +40,7 @@ export interface ImportCSVResult {
 export interface OpenSheetAPI {
   createWorkbook(options: { id?: string; name: string }): WorkbookInfo;
 
-  loadWorkbook(snapshot: WorkbookSnapshot): WorkbookInfo;
+  loadWorkbook(snapshot: SupportedWorkbookSnapshot): WorkbookInfo;
 
   getWorkbookSnapshot(): WorkbookSnapshot;
 

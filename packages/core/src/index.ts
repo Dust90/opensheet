@@ -11,6 +11,7 @@ export {
   toWorksheetSnapshot,
   workbookFromSnapshot,
   worksheetFromSnapshot,
+  migrateV1ToV2,
 } from "./snapshot.js";
 export type { LoadOptions } from "./snapshot.js";
 

@@ -9,8 +9,13 @@
 //     current workbook — restore() returns null and leaves storage untouched.
 //   - Debounced saves coalesce bursts of edits into one write.
 
-import type { Unsubscribe, WorkbookSnapshot } from "@opensheet/shared";
-import { CELL_ERROR_TYPES, MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+import type { SupportedWorkbookSnapshot, Unsubscribe } from "@opensheet/shared";
+import {
+  CELL_ERROR_TYPES,
+  MAX_COLS,
+  MAX_ROWS,
+  validateFilterSpec,
+} from "@opensheet/shared";
 import { parseFormula } from "@opensheet/formula-engine";
 import type { OpenSheetAPI, WorkbookInfo } from "./api.js";
 
@@ -53,10 +58,15 @@ const DEFAULT_KEY = "opensheet:workbook";
  * freeze bounds, activeSheetId existence, cell key legality + bounds, and
  * row-height/column-width entries.
  */
-export function validateSnapshot(value: unknown): value is WorkbookSnapshot {
+export function validateSnapshot(value: unknown): value is SupportedWorkbookSnapshot {
   if (!isPlainRecord(value)) return false;
   const v = value as Record<string, unknown>;
-  if (v.version !== WORKBOOK_SNAPSHOT_VERSION) return false;
+  if (v.version === 1) return validateWorkbookSnapshot(v, false);
+  if (v.version === 2) return validateWorkbookSnapshot(v, true);
+  return false;
+}
+
+function validateWorkbookSnapshot(v: Record<string, unknown>, requireFilter: boolean): boolean {
   if (typeof v.id !== "string" || typeof v.name !== "string") return false;
   if (typeof v.activeSheetId !== "string") return false;
   if (!Array.isArray(v.sheets) || v.sheets.length === 0) return false;
@@ -67,7 +77,7 @@ export function validateSnapshot(value: unknown): value is WorkbookSnapshot {
     if (!isValidStyle(style)) return false;
   }
   const styleIds = new Set(Object.keys(styles));
-  if (!v.sheets.every((sheet) => validateWorksheetSnapshot(sheet, styleIds))) return false;
+  if (!v.sheets.every((sheet) => validateWorksheetSnapshot(sheet, styleIds, requireFilter))) return false;
   // Sheet ids must be unique (loader keys sheets by id).
   const ids = (v.sheets as unknown[]).map((sheet) => (sheet as Record<string, unknown>).id);
   if (new Set(ids).size !== ids.length) return false;
@@ -82,7 +92,11 @@ export function validateSnapshot(value: unknown): value is WorkbookSnapshot {
  * implicit defaults. "Valid" here is exactly "workbookFromSnapshot can load
  * this without throwing".
  */
-function validateWorksheetSnapshot(sheet: unknown, styleIds: ReadonlySet<string>): boolean {
+function validateWorksheetSnapshot(
+  sheet: unknown,
+  styleIds: ReadonlySet<string>,
+  requireFilter: boolean,
+): boolean {
   if (!isPlainRecord(sheet)) return false;
   const s = sheet as Record<string, unknown>;
   if (typeof s.id !== "string" || typeof s.name !== "string") return false;
@@ -98,6 +112,22 @@ function validateWorksheetSnapshot(sheet: unknown, styleIds: ReadonlySet<string>
   }
   if (!isSizeMap(s.rowHeights, rowCount)) return false;
   if (!isSizeMap(s.columnWidths, columnCount)) return false;
+  // Keep the two schemas unambiguous: V1 has no filter field at all, while
+  // V2 requires it (including an explicit null).
+  if (!requireFilter && "filter" in s) return false;
+  if (requireFilter) {
+    // V2 is strict: `filter` must be present even when it is null.
+    if (!("filter" in s)) return false;
+    if (s.filter !== null) {
+      try {
+        validateFilterSpec(s.filter);
+      } catch {
+        return false;
+      }
+      const filter = s.filter as import("@opensheet/shared").FilterSpec;
+      if (filter.range.endRow >= rowCount || filter.range.endCol >= columnCount) return false;
+    }
+  }
   return true;
 }
 

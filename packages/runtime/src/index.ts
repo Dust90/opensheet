@@ -21,5 +21,10 @@ export type {
   ChangeEvent,
   WorkbookSnapshot,
   WorksheetSnapshot,
+  WorkbookSnapshotV1,
+  WorkbookSnapshotV2,
+  WorksheetSnapshotV1,
+  WorksheetSnapshotV2,
+  SupportedWorkbookSnapshot,
 } from "@opensheet/shared";
 export { SheetError } from "@opensheet/shared";

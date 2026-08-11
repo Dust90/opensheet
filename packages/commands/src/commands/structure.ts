@@ -40,6 +40,7 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
       const sheet = ctx.workbook.getSheet(ctx.sheetId);
       const previousFilter = cloneFilter(sheet.filter);
       const filterRange = previousFilter === null ? undefined : { ...previousFilter.range };
+      const filterBytes = previousFilter === null ? 0 : JSON.stringify(previousFilter).length;
       const count = payload.count ?? 1;
       if (payload.at > (axis === "rows" ? sheet.rowCount : sheet.columnCount)) {
         throw new SheetError(
@@ -116,7 +117,7 @@ function makeStructureCommand(axis: Axis): SheetCommand<StructurePayload> {
           { sheetId: sheet.id, range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind },
           ...(filterRange === undefined ? [] : [{ sheetId: sheet.id, range: filterRange, kind: "filter" as const }]),
         ],
-        approxBytes: 256 + rewrites.length * 96,
+        approxBytes: 256 + rewrites.length * 96 + filterBytes,
         undo: (rctx) => {
           // Cells are back at their original positions after undoSingle;
           // restore the original formula sources first.
@@ -164,6 +165,7 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
       const sheet = ctx.workbook.getSheet(ctx.sheetId);
       const previousFilter = cloneFilter(sheet.filter);
       const filterRange = previousFilter === null ? undefined : { ...previousFilter.range };
+      const filterBytes = previousFilter === null ? 0 : JSON.stringify(previousFilter).length;
       const count = payload.count ?? 1;
       const total = axis === "rows" ? sheet.rowCount : sheet.columnCount;
       if (payload.at + count > total) {
@@ -269,7 +271,7 @@ function makeDeleteCommand(axis: Axis): SheetCommand<StructurePayload> {
           { sheetId: sheet.id, range: { startRow: 0, startCol: 0, endRow: sheet.rowCount - 1, endCol: sheet.columnCount - 1 }, kind },
           ...(filterRange === undefined ? [] : [{ sheetId: sheet.id, range: filterRange, kind: "filter" as const }]),
         ],
-        approxBytes: 512 + deletedCells.size * 160 + deletedSizes.size * 32 + rewrites.length * 96,
+        approxBytes: 512 + deletedCells.size * 160 + deletedSizes.size * 32 + rewrites.length * 96 + filterBytes,
         undo: (rctx) => {
           undoRewrites();
           restoreInverse();

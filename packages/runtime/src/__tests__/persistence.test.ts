@@ -2,7 +2,15 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { createOpenSheet, createPersistence, validateSnapshot, type StorageLike } from "../index.js";
-import { MAX_COLS, MAX_ROWS, WORKBOOK_SNAPSHOT_VERSION, type CellError, type WorkbookSnapshot } from "@opensheet/shared";
+import {
+  MAX_COLS,
+  MAX_ROWS,
+  WORKBOOK_SNAPSHOT_VERSION,
+  type CellError,
+  type FilterSpec,
+  type WorkbookSnapshot,
+  type WorkbookSnapshotV1,
+} from "@opensheet/shared";
 
 function memoryStorage(seed: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...seed };
@@ -148,6 +156,7 @@ describe("createPersistence", () => {
             columnWidths: {},
             frozenRows: 0,
             frozenColumns: 0,
+            filter: null,
           },
         ],
         styles: {},
@@ -176,6 +185,7 @@ describe("createPersistence", () => {
       columnWidths: {},
       frozenRows: 0,
       frozenColumns: 0,
+      filter: null,
       ...over,
     });
     const make = (s: Record<string, unknown>) => ({ ...base, sheets: [sheet(s)] });
@@ -223,12 +233,13 @@ describe("createPersistence", () => {
       columnWidths: {},
       frozenRows: 0,
       frozenColumns: 0,
+      filter: null,
     };
     const make = (s: unknown) => ({ ...base, sheets: [s] });
 
     expect(validateSnapshot(make(full))).toBe(true);
     // Each required field, when removed, must be rejected (no defaulting).
-    for (const field of ["rowHeights", "columnWidths", "frozenRows", "frozenColumns", "cells"] as const) {
+    for (const field of ["rowHeights", "columnWidths", "frozenRows", "frozenColumns", "cells", "filter"] as const) {
       const { [field]: _omitted, ...rest } = full;
       expect(validateSnapshot(make(rest))).toBe(false);
     }
@@ -269,6 +280,7 @@ describe("createPersistence", () => {
       columnWidths: {},
       frozenRows: 0,
       frozenColumns: 0,
+      filter: null,
     };
     const make = (cells: Record<string, unknown>) =>
       validateSnapshot({ ...base, sheets: [{ ...full, cells }] });
@@ -308,6 +320,7 @@ describe("createPersistence", () => {
       columnWidths: {},
       frozenRows: 0,
       frozenColumns: 0,
+      filter: null,
     };
     const make = (cells: Record<string, unknown>, styles: Record<string, unknown>) =>
       validateSnapshot({ ...base, styles, sheets: [{ ...full, cells }] });
@@ -363,6 +376,7 @@ describe("createPersistence", () => {
           columnWidths: { 0: 120 },
           frozenRows: 1,
           frozenColumns: 1,
+          filter: null,
         },
       ],
       styles: { s1: { bold: true } },
@@ -373,6 +387,109 @@ describe("createPersistence", () => {
     expect(wb.name).toBe("n");
     const value = api.readRange({ sheetId: wb.activeSheetId, range: "A1" })[0]![0];
     expect(value).toBe("a1");
+  });
+});
+
+describe("M4.2-E snapshot V2 filters", () => {
+  const filter: FilterSpec = {
+    range: { startRow: 0, startCol: 0, endRow: 9, endCol: 1 },
+    hasHeader: true,
+    conditions: [{ columnOffset: 1, operator: "greaterThan", value: 10 }],
+  };
+
+  function v2Sheet(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "s",
+      name: "Sheet",
+      rowCount: 10,
+      columnCount: 2,
+      cells: {},
+      rowHeights: {},
+      columnWidths: {},
+      frozenRows: 0,
+      frozenColumns: 0,
+      filter: null,
+      ...overrides,
+    };
+  }
+
+  function v2(sheet: Record<string, unknown>) {
+    return { version: 2, id: "wb", name: "Book", activeSheetId: "s", styles: {}, sheets: [sheet] };
+  }
+
+  it("writes V2, strictly accepts V1 migration, and restores filter=null", () => {
+    const { filter: _filter, ...legacySheet } = v2Sheet();
+    const legacy: WorkbookSnapshotV1 = {
+      version: 1,
+      id: "legacy",
+      name: "Legacy",
+      activeSheetId: "s",
+      styles: {},
+      sheets: [legacySheet],
+    };
+    expect(validateSnapshot(legacy)).toBe(true);
+    expect(validateSnapshot({ ...legacy, sheets: [{ ...legacy.sheets[0]!, filter: null }] })).toBe(false);
+    const api = createOpenSheet();
+    const loaded = api.loadWorkbook(legacy);
+    expect(api.getWorksheetView(loaded.activeSheetId).filter).toBeNull();
+    expect(api.getWorkbookSnapshot().version).toBe(2);
+    expect(api.getWorkbookSnapshot().sheets[0]!.filter).toBeNull();
+  });
+
+  it("requires an explicit V2 filter and validates its shape and sheet bounds", () => {
+    expect(validateSnapshot(v2(v2Sheet()))).toBe(true);
+    const { filter: _removed, ...withoutFilter } = v2Sheet();
+    expect(validateSnapshot(v2(withoutFilter))).toBe(false);
+    expect(validateSnapshot(v2(v2Sheet({ filter: { ...filter, conditions: [{ ...filter.conditions[0]!, operator: "nope" }] } })))).toBe(false);
+    expect(validateSnapshot(v2(v2Sheet({ filter: { ...filter, conditions: [{ ...filter.conditions[0]!, columnOffset: 2 }] } })))).toBe(false);
+    expect(validateSnapshot(v2(v2Sheet({ filter: { ...filter, range: { ...filter.range, endRow: 10 } } })))).toBe(false);
+    expect(validateSnapshot(v2(v2Sheet({ filter: { ...filter, range: { ...filter.range, endCol: 2 } } })))).toBe(false);
+  });
+
+  it("round-trips independent filters per sheet and snapshots remain detached", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Round trip" });
+    const second = api.createSheet({ name: "Second", rows: 10, columns: 2 });
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      atomic: true,
+      operations: [{ type: "filter.apply", spec: filter }],
+    });
+    const snapshot = api.getWorkbookSnapshot();
+    expect(snapshot.sheets.find((sheet) => sheet.id === workbook.activeSheetId)!.filter).toEqual(filter);
+    expect(snapshot.sheets.find((sheet) => sheet.id === second.id)!.filter).toBeNull();
+    snapshot.sheets[0]!.filter!.range.endRow = 0;
+    expect(api.getWorksheetView(workbook.activeSheetId).filter!.range.endRow).toBe(9);
+
+    const restoredApi = createOpenSheet();
+    restoredApi.loadWorkbook(api.getWorkbookSnapshot());
+    expect(restoredApi.getWorksheetView(workbook.activeSheetId).filter).toEqual(filter);
+    expect(restoredApi.getWorksheetView(second.id).filter).toBeNull();
+  });
+
+  it("restores filters while formula caches are independently recalculated", () => {
+    const snapshot: WorkbookSnapshot = {
+      version: 2,
+      id: "wb",
+      name: "Formula Filter",
+      activeSheetId: "s",
+      styles: {},
+      sheets: [{
+        ...v2Sheet({
+          cells: {
+            "0:0": { value: 2 },
+            "0:1": { value: 999, formula: "=A1*10" },
+          },
+          filter: { ...filter, range: { ...filter.range, endRow: 9, endCol: 1 } },
+        }),
+      }],
+    };
+    expect(validateSnapshot(snapshot)).toBe(true);
+    const api = createOpenSheet();
+    api.loadWorkbook(snapshot);
+    expect(api.readRange({ sheetId: "s", range: "B1" })[0]![0]).toBe(20);
+    expect(api.getWorksheetView("s").filter).toEqual(filter);
   });
 });
 
@@ -396,6 +513,7 @@ describe("M3.6 Fix 8: Snapshot formula syntax validation", () => {
     columnWidths: {},
     frozenRows: 0,
     frozenColumns: 0,
+    filter: null,
   };
   const make = (cells: Record<string, unknown>) =>
     validateSnapshot({ ...base, sheets: [{ ...fullSheet, cells }] });
@@ -461,12 +579,12 @@ describe("M3.6 Fix 1: Multi-sheet formula isolation", () => {
         {
           id: "s1", name: "Sheet1", rowCount: 10, columnCount: 5,
           cells: { "0:0": { value: 99 /* stale */, formula: "=1+1" } },
-          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0,
+          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0, filter: null,
         },
         {
           id: "s2", name: "Sheet2", rowCount: 10, columnCount: 5,
           cells: { "0:0": { value: 99 /* stale */, formula: "=3+4" } },
-          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0,
+          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0, filter: null,
         },
       ],
       styles: {},
@@ -498,7 +616,7 @@ describe("M3.6 Fix 3: Snapshot rebuild writes #CYCLE! before evaluating downstre
             "0:1": { value: 999 /* stale */, formula: "=A1+1" },  // B1
             "0:2": { value: 1998 /* stale */, formula: "=A1*2" }, // C1
           },
-          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0,
+          rowHeights: {}, columnWidths: {}, frozenRows: 0, frozenColumns: 0, filter: null,
         },
       ],
       styles: {},

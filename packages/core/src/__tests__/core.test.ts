@@ -170,7 +170,7 @@ describe("snapshot", () => {
     const workbook = new Workbook({ id: "wb", name: "B" });
     workbook.addSheet(makeSheet());
     const snapshot = toWorkbookSnapshot(workbook);
-    expect(() => workbookFromSnapshot({ ...snapshot, version: 999 })).toThrow(/version/);
+    expect(() => workbookFromSnapshot({ ...snapshot, version: 999 } as unknown as import("@opensheet/shared").SupportedWorkbookSnapshot)).toThrow(/version/);
   });
 
   it("property: save/load is identity for random sparse sheets", () => {

@@ -1,8 +1,12 @@
-// Workbook <-> WorkbookSnapshot conversion (version 1).
+// Workbook <-> WorkbookSnapshot conversion. New writes are V2; V1 loads are
+// explicitly migrated at this single boundary before any Worksheet is built.
 
 import type {
   CellStoreFactory,
   WorkbookSnapshot,
+  WorkbookSnapshotV1,
+  WorkbookSnapshotV2,
+  SupportedWorkbookSnapshot,
   WorksheetSnapshot,
 } from "@opensheet/shared";
 import { SheetError, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
@@ -25,6 +29,11 @@ export function toWorksheetSnapshot(sheet: Worksheet): WorksheetSnapshot {
     columnWidths: Object.fromEntries([...sheet.columnWidths].map(([k, v]) => [String(k), v])),
     frozenRows: sheet.frozenRows,
     frozenColumns: sheet.frozenColumns,
+    filter: sheet.filter === null ? null : {
+      range: { ...sheet.filter.range },
+      hasHeader: sheet.filter.hasHeader,
+      conditions: sheet.filter.conditions.map((condition) => ({ ...condition })),
+    },
   };
 }
 
@@ -66,24 +75,45 @@ export function worksheetFromSnapshot(
   for (const [index, width] of Object.entries(snapshot.columnWidths)) {
     sheet.columnWidths.set(Number(index), width);
   }
+  // Keep Snapshot load on the same validation + clone boundary as commands.
+  sheet.setFilter(snapshot.filter);
   return sheet;
 }
 
-export function workbookFromSnapshot(snapshot: WorkbookSnapshot, options?: LoadOptions): Workbook {
-  if (snapshot.version !== WORKBOOK_SNAPSHOT_VERSION) {
+/** Pure strict migration: valid V1 has no ambiguous optional filter field. */
+export function migrateV1ToV2(snapshot: WorkbookSnapshotV1): WorkbookSnapshotV2 {
+  return {
+    id: snapshot.id,
+    name: snapshot.name,
+    activeSheetId: snapshot.activeSheetId,
+    styles: { ...snapshot.styles },
+    version: WORKBOOK_SNAPSHOT_VERSION,
+    sheets: snapshot.sheets.map((sheet) => ({
+      ...sheet,
+      cells: Object.fromEntries(Object.entries(sheet.cells).map(([key, data]) => [key, { ...data }])),
+      rowHeights: { ...sheet.rowHeights },
+      columnWidths: { ...sheet.columnWidths },
+      filter: null,
+    })),
+  };
+}
+
+export function workbookFromSnapshot(snapshot: SupportedWorkbookSnapshot, options?: LoadOptions): Workbook {
+  const v2 = snapshot.version === 1 ? migrateV1ToV2(snapshot) : snapshot;
+  if (v2.version !== WORKBOOK_SNAPSHOT_VERSION) {
     throw new SheetError(
       "E_VALIDATION",
-      `Unsupported snapshot version ${snapshot.version} (expected ${WORKBOOK_SNAPSHOT_VERSION})`,
+      `Unsupported snapshot version ${v2.version} (expected ${WORKBOOK_SNAPSHOT_VERSION})`,
     );
   }
-  const workbook = new Workbook({ id: snapshot.id, name: snapshot.name });
-  workbook.version = snapshot.version;
-  workbook.styles.replaceWith(StyleTable.fromJSON(snapshot.styles));
-  for (const sheetSnapshot of snapshot.sheets) {
+  const workbook = new Workbook({ id: v2.id, name: v2.name });
+  workbook.version = v2.version;
+  workbook.styles.replaceWith(StyleTable.fromJSON(v2.styles));
+  for (const sheetSnapshot of v2.sheets) {
     workbook.addSheet(worksheetFromSnapshot(sheetSnapshot, options));
   }
-  if (snapshot.sheets.length > 0) {
-    workbook.setActiveSheet(snapshot.activeSheetId);
+  if (v2.sheets.length > 0) {
+    workbook.setActiveSheet(v2.activeSheetId);
   }
   return workbook;
 }

@@ -121,4 +121,28 @@ describe("filter commands", () => {
     expect(history.undoDepth).toBe(1);
     expect(events[0]!.changes.map((change) => change.kind)).toEqual(["rows"]);
   });
+
+  it("rolls back both structure and Filter when a later atomic operation fails", () => {
+    const { sheet, history, bus, events } = setup();
+    const edgeFilter: FilterSpec = {
+      range: { startRow: 0, startCol: 0, endRow: 99, endCol: 9 },
+      hasHeader: false,
+      conditions: [{ columnOffset: 0, operator: "notBlank" }],
+    };
+    bus.applyOperations({ sheetId: sheet.id, atomic: true, operations: [{ type: "filter.apply", spec: edgeFilter }] });
+    events.length = 0;
+    const historyBefore = history.undoDepth;
+    expect(() => bus.applyOperations({
+      sheetId: sheet.id,
+      atomic: true,
+      operations: [
+        { type: "row.delete", at: 50, count: 50 },
+        { type: "row.delete", at: 99, count: 2 }, // invalid after the first operation
+      ],
+    })).toThrow();
+    expect(sheet.rowCount).toBe(100);
+    expect(sheet.filter).toEqual(edgeFilter);
+    expect(events).toHaveLength(0);
+    expect(history.undoDepth).toBe(historyBefore);
+  });
 });
