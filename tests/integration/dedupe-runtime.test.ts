@@ -42,23 +42,25 @@ describe("range.dedupe runtime formulas", () => {
     sheet = api.getWorksheetView(id);
     expect(sheet.getCell(2, 1)).toMatchObject({ formula: "=C3*10", value: 10 });
     api.redo();
-    await apply([{ type: "cell.set", range: "C2", value: 4 }]);
+    await apply([{ type: "cell.set", range: "A2", value: "z" }, { type: "cell.set", range: "C2", value: 4 }]);
     sheet = api.getWorksheetView(id);
     expect(sheet.getCell(1, 1)?.value).toBe(40);
-    expect(sheet.getCell(0, 4)?.value).toBe("y");
+    expect(sheet.getCell(0, 4)?.value).toBe("z");
   });
 
   it("recalculates translated #REF! formulas and restores their source on undo", async () => {
     const api = createOpenSheet();
     const workbook = api.createWorkbook({ name: "Dedupe" });
     const id = workbook.activeSheetId;
-    await api.applyOperations({ workbookId: workbook.id, sheetId: id, atomic: true, operations: [
+    const apply = (operations: Parameters<typeof api.applyOperations>[0]["operations"]) =>
+      api.applyOperations({ workbookId: workbook.id, sheetId: id, atomic: true, operations });
+    await apply([
       { type: "cell.set", range: "A1", value: "x" },
       { type: "cell.set", range: "A2", value: "x" },
       { type: "cell.set", range: "A3", value: "y" },
       { type: "formula.set", range: "B3", formula: "=A1" },
-      { type: "range.dedupe", spec: { range: { startRow: 0, startCol: 0, endRow: 2, endCol: 1 }, hasHeader: false, keyColumnOffsets: [0], keep: "first" } },
-    ] });
+    ]);
+    await apply([{ type: "range.dedupe", spec: { range: { startRow: 0, startCol: 0, endRow: 2, endCol: 1 }, hasHeader: false, keyColumnOffsets: [0], keep: "first" } }]);
     expect(api.getWorksheetView(id).getCell(1, 1)).toMatchObject({ formula: "=#REF!", value: { type: "#REF!" } });
     api.undo();
     expect(api.getWorksheetView(id).getCell(2, 1)).toMatchObject({ formula: "=A1", value: "x" });
