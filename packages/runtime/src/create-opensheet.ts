@@ -21,6 +21,7 @@ import {
 } from "@opensheet/shared";
 import type { ImportCSVResult, OpenSheetAPI, SheetInfo, WorkbookInfo } from "./api.js";
 import { FormulaEngine, type FormulaEngineOptions } from "./formula-engine.js";
+import { evaluateVisibleRows } from "./filter-engine.js";
 
 export interface OpenSheetOptions {
   history?: HistoryOptions;
@@ -285,6 +286,15 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
 
     getWorksheetView(sheetId: string) {
       return getEntry().workbook.getSheetView(sheetId);
+    },
+
+    getFilterProjectionState(sheetId: string) {
+      const sheet = getEntry().workbook.getSheet(sheetId);
+      const filter = sheet.filter;
+      return {
+        filter,
+        visibleRows: filter === null ? null : evaluateVisibleRows(sheet, filter),
+      };
     },
 
     resolveStyle(styleId: string) {

@@ -10,6 +10,7 @@ export type {
   OpenSheetAPI,
   SheetInfo,
   WorkbookInfo,
+  FilterProjectionState,
 } from "./api.js";
 export type { ApplyOperationsRequest, ApplyOperationsResult } from "./api.js";
 // Re-export contracts hosts commonly need.

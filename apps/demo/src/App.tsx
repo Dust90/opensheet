@@ -139,6 +139,41 @@ function App() {
       },
     });
     gridRef.current = grid;
+    // M4.2-F: Runtime exposes filter data only; the host owns the renderer
+    // projection. Coalesce user + derived events in one microtask refresh.
+    let refreshQueued = false;
+    const refreshProjection = () => {
+      refreshQueued = false;
+      const state = api.getFilterProjectionState(sheetId);
+      if (state.filter === null) {
+        grid.setRowProjection(null);
+      } else {
+        grid.setRowProjection(new FilteredRowProjection(
+          api.getWorksheetView(sheetId).rowCount,
+          { startRow: state.filter.range.startRow, endRow: state.filter.range.endRow },
+          state.visibleRows!,
+        ));
+      }
+    };
+    const queueProjectionRefresh = () => {
+      if (refreshQueued) return;
+      refreshQueued = true;
+      queueMicrotask(refreshProjection);
+    };
+    const projectionUnsubscribe = api.onChange((event) => {
+      if (event.sheetId !== sheetId) return;
+      if (event.changes.some((change) => change.kind === "filter")) {
+        queueProjectionRefresh();
+        return;
+      }
+      const filter = api.getFilterProjectionState(sheetId).filter;
+      if (filter !== null && event.changes.some((change) =>
+        change.kind === "cells" &&
+        change.range.startRow <= filter.range.endRow && change.range.endRow >= filter.range.startRow &&
+        change.range.startCol <= filter.range.endCol && change.range.endCol >= filter.range.startCol,
+      )) queueProjectionRefresh();
+    });
+    refreshProjection();
     // Test probes (E2E): expose grid/api for driving combined frames, copying,
     // and snapshot assertions.
     (window as unknown as { __grid?: SheetGrid }).__grid = grid;
@@ -149,6 +184,7 @@ function App() {
     (window as unknown as { __FilteredRowProjection?: typeof FilteredRowProjection }).__FilteredRowProjection =
       FilteredRowProjection;
     return () => {
+      projectionUnsubscribe();
       (window as unknown as { __grid?: SheetGrid }).__grid = undefined;
       (window as unknown as { __api?: typeof api }).__api = undefined;
       (window as unknown as { __workbookId?: string }).__workbookId = undefined;

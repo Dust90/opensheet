@@ -6,6 +6,7 @@ import type {
   CellStyle,
   CellValue,
   ChangeEvent,
+  FilterSpec,
   Unsubscribe,
   WorkbookSnapshot,
   SupportedWorkbookSnapshot,
@@ -27,6 +28,12 @@ export interface SheetInfo {
   name: string;
   rowCount: number;
   columnCount: number;
+}
+
+/** Distinguishes no active filter from an active filter with zero matching rows. */
+export interface FilterProjectionState {
+  filter: Readonly<FilterSpec> | null;
+  visibleRows: Uint32Array | null;
 }
 
 export interface ImportCSVResult {
@@ -71,6 +78,8 @@ export interface OpenSheetAPI {
 
   /** UI-facing readonly accessor: renderers consume WorksheetView only. */
   getWorksheetView(sheetId: string): WorksheetView;
+
+  getFilterProjectionState(sheetId: string): FilterProjectionState;
 
   /** Resolve a style id to its (readonly) style; undefined if unknown. */
   resolveStyle(styleId: string): Readonly<CellStyle> | undefined;

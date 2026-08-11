@@ -2,6 +2,7 @@ import type { WorksheetView } from "@opensheet/core";
 import type { CellValue, FilterCondition, FilterSpec } from "@opensheet/shared";
 import { describe, expect, it } from "vitest";
 import { evaluateVisibleRows, rowMatchesFilter } from "../filter-engine.js";
+import { createOpenSheet } from "../create-opensheet.js";
 
 const RANGE = { startRow: 10, startCol: 0, endRow: 20, endCol: 2 };
 
@@ -31,6 +32,22 @@ function sheet(cells: Record<string, CellValue> = {}, formulas: Record<string, s
 }
 
 describe("filter engine", () => {
+  it("exposes a distinguishable runtime projection state", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Projection" });
+    await api.applyOperations({
+      workbookId: workbook.id, sheetId: workbook.activeSheetId, atomic: true,
+      operations: [
+        { type: "range.write", range: "A1:A3", values: [["Header"], ["east"], ["west"]] },
+        { type: "filter.apply", spec: { range: { startRow: 0, startCol: 0, endRow: 2, endCol: 0 }, hasHeader: true, conditions: [{ columnOffset: 0, operator: "equals", value: "east" }] } },
+      ],
+    });
+    expect(api.getFilterProjectionState(workbook.activeSheetId)).toMatchObject({ filter: expect.any(Object) });
+    expect([...api.getFilterProjectionState(workbook.activeSheetId).visibleRows!]).toEqual([0, 1]);
+    await api.applyOperations({ workbookId: workbook.id, sheetId: workbook.activeSheetId, atomic: true, operations: [{ type: "filter.clear" }] });
+    expect(api.getFilterProjectionState(workbook.activeSheetId)).toEqual({ filter: null, visibleRows: null });
+  });
+
   it("keeps only filter-range rows and leaves range-external rows to the projection", () => {
     const view = sheet({ "9:0": "outside-before", "10:0": "match", "11:0": "miss", "21:0": "outside-after" });
     expect([...evaluateVisibleRows(view, filter({ columnOffset: 0, operator: "equals", value: "match" }))]).toEqual([10]);
