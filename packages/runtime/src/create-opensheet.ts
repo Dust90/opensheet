@@ -20,11 +20,13 @@ import {
 import {
   createPluginHost,
   type PluginCommandContext,
+  type PluginFormulaFunction,
   type PluginHost,
   type PluginOperation,
 } from "@opensheet/plugin-api";
 import {
   parseRange,
+  CELL_ERROR_TYPES,
   SheetError,
   isCellError,
   isSheetError,
@@ -38,6 +40,7 @@ import {
   type Unsubscribe,
   type WorkbookSnapshot,
 } from "@opensheet/shared";
+import type { FunctionImpl } from "@opensheet/formula-engine";
 import type { ImportCSVResult, OpenSheetAPI, SheetInfo, WorkbookInfo } from "./api.js";
 import { FormulaEngine, type FormulaEngineOptions } from "./formula-engine.js";
 import { evaluateVisibleRows } from "./filter-engine.js";
@@ -65,8 +68,10 @@ const DEFAULT_COLUMNS = 26;
  */
 export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
   const entries = new Map<string, WorkbookEntry>();
+  const reservedFormulaFunctionNames = new FormulaEngine().listFunctionNames();
   const pluginHost: PluginHost = createPluginHost({
     reservedCommandIds: createDefaultRegistry().list(),
+    reservedFunctionNames: reservedFormulaFunctionNames,
   });
   let currentId = "";
 
@@ -79,6 +84,7 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
       registry: createDefaultRegistry(),
     });
     const formulas = new FormulaEngine(options?.formula);
+    installPluginFormulaFunctions(formulas);
     // M3: incremental recalculation folds into every commit. changedFormulas
     // = cells inside changed ranges whose CellData.formula presence/source
     // changed (formula.set, literal overwrite, undo/redo, structure rewrite)
@@ -419,6 +425,63 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     return value as PluginOperation[];
   }
 
+  function installPluginFormulaFunctions(formulas: FormulaEngine): void {
+    for (const contribution of pluginHost.listFunctionContributions()) {
+      if (contribution.execute === undefined) continue;
+      formulas.registerPluginFunction(
+        contribution.name,
+        pluginFormulaImplementation(contribution.name, contribution.minArgs, contribution.maxArgs, contribution.execute),
+      );
+    }
+  }
+
+  function pluginFormulaImplementation(
+    name: string,
+    minArgs: number,
+    maxArgs: number,
+    execute: PluginFormulaFunction,
+  ): FunctionImpl {
+    return (args) => {
+      if (args.length < minArgs || args.length > maxArgs) {
+        return { type: "#VALUE!", message: `${name} needs ${minArgs}-${maxArgs} arguments` };
+      }
+      try {
+        return normalizePluginFormulaValue(execute(args));
+      } catch (error) {
+        if (isKnownCellError(error)) {
+          return { ...error };
+        }
+        return { type: "#VALUE!", message: `Plugin function ${name} failed` };
+      }
+    };
+  }
+
+  function normalizePluginFormulaValue(value: unknown): CellValue {
+    if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : { type: "#NUM!", message: "Plugin function returned a non-finite number" };
+    }
+    if (isKnownCellError(value)) {
+      return value.message === undefined ? { type: value.type } : { type: value.type, message: value.message };
+    }
+    return { type: "#VALUE!", message: "Plugin function returned an invalid CellValue" };
+  }
+
+  function isKnownCellError(value: unknown): value is Extract<CellValue, object> {
+    const candidate = value as { type?: unknown; message?: unknown } | null;
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      typeof candidate?.type === "string" &&
+      CELL_ERROR_TYPES.includes(candidate.type as (typeof CELL_ERROR_TYPES)[number]) &&
+      (candidate.message === undefined || typeof candidate.message === "string")
+    );
+  }
+
+  function recalculateAllFormulas(entry: WorkbookEntry): void {
+    entry.formulas.rebuildAndRecalculateAll(entry.workbook.asView(), makeDerivedBridge(entry));
+  }
+
   const api: OpenSheetAPI = {
     createWorkbook({ id, name }) {
       const workbook = new Workbook({ id: id ?? crypto.randomUUID(), name });
@@ -585,11 +648,41 @@ export function createOpenSheet(options?: OpenSheetOptions): OpenSheetAPI {
     },
 
     async usePlugin(plugin) {
+      const beforeNames = new Set(pluginHost.listFunctionContributions().map((contribution) => contribution.name));
       await pluginHost.use(plugin);
+      const added = pluginHost.listFunctionContributions().filter(
+        (contribution) => contribution.execute !== undefined && !beforeNames.has(contribution.name),
+      );
+      if (added.length === 0) return;
+      try {
+        for (const entry of entries.values()) {
+          for (const contribution of added) {
+            entry.formulas.registerPluginFunction(
+              contribution.name,
+              pluginFormulaImplementation(contribution.name, contribution.minArgs, contribution.maxArgs, contribution.execute!),
+            );
+          }
+          recalculateAllFormulas(entry);
+        }
+      } catch (error) {
+        for (const entry of entries.values()) {
+          for (const contribution of added) entry.formulas.unregisterPluginFunction(contribution.name);
+        }
+        await pluginHost.dispose(plugin.id);
+        throw error;
+      }
     },
 
     async disposePlugin(pluginId) {
+      const before = pluginHost.listFunctionContributions().filter((contribution) => contribution.execute !== undefined);
       await pluginHost.dispose(pluginId);
+      const retained = new Set(pluginHost.listFunctionContributions().map((contribution) => contribution.name));
+      const removed = before.filter((contribution) => !retained.has(contribution.name));
+      if (removed.length === 0) return;
+      for (const entry of entries.values()) {
+        for (const contribution of removed) entry.formulas.unregisterPluginFunction(contribution.name);
+        recalculateAllFormulas(entry);
+      }
     },
 
     getPluginContributions() {

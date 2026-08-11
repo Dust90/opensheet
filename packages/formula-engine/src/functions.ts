@@ -79,6 +79,14 @@ export class FunctionRegistry {
     }
     return impl;
   }
+
+  unregister(name: string): boolean {
+    return this.functions.delete(name.toUpperCase());
+  }
+
+  list(): readonly string[] {
+    return [...this.functions.keys()];
+  }
 }
 
 export function createDefaultFunctions(): FunctionRegistry {

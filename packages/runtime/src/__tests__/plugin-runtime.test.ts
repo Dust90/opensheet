@@ -175,4 +175,120 @@ describe("Runtime plugin assembly", () => {
     })).rejects.toMatchObject({ code: "E_VALIDATION" });
     expect(api.getPluginContributions().commands).toEqual([]);
   });
+
+  it("installs and removes pure plugin formula functions across existing workbooks", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      atomic: true,
+      operations: [
+        { type: "cell.set", range: "A1", value: 2 },
+        { type: "cell.set", range: "A2", value: 3 },
+        { type: "formula.set", range: "B1", formula: "=PLUGIN_SUM(A1:A2)" },
+      ],
+    });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "B1" })[0]![0]).toMatchObject({ type: "#NAME?" });
+
+    await api.usePlugin({
+      id: "formula-plugin",
+      setup(context) {
+        context.functions.registerFunction({
+          name: "plugin_sum",
+          minArgs: 1,
+          maxArgs: 1,
+          execute(args) {
+            const argument = args[0]!;
+            if (
+              typeof argument !== "object" ||
+              argument === null ||
+              !("kind" in argument) ||
+              argument.kind !== "range"
+            ) {
+              return { type: "#VALUE!", message: "range required" };
+            }
+            let total = 0;
+            for (const value of argument.values()) {
+              if (typeof value === "number") total += value;
+            }
+            return total;
+          },
+        });
+      },
+    });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "B1" })).toEqual([[5]]);
+
+    // Formula registries are per-workbook. A workbook created after plugin
+    // installation must receive the same executable contribution.
+    const laterWorkbook = api.createWorkbook({ name: "Later" });
+    await api.applyOperations({
+      workbookId: laterWorkbook.id,
+      sheetId: laterWorkbook.activeSheetId,
+      atomic: true,
+      operations: [
+        { type: "cell.set", range: "A1", value: 4 },
+        { type: "cell.set", range: "A2", value: 5 },
+        { type: "formula.set", range: "B1", formula: "=PLUGIN_SUM(A1:A2)" },
+      ],
+    });
+    expect(api.readRange({ sheetId: laterWorkbook.activeSheetId, range: "B1" })).toEqual([[9]]);
+
+    await api.disposePlugin("formula-plugin");
+    expect(api.readRange({ sheetId: laterWorkbook.activeSheetId, range: "B1" })[0]![0]).toMatchObject({ type: "#NAME?" });
+  });
+
+  it("maps unexpected formula function failures and non-finite returns to stable cell errors", async () => {
+    const api = createOpenSheet();
+    const workbook = api.createWorkbook({ name: "Book" });
+    await api.usePlugin({
+      id: "error-functions",
+      setup(context) {
+        context.functions.registerFunction({
+          name: "THROWING",
+          minArgs: 0,
+          maxArgs: 0,
+          execute() { throw new Error("boom"); },
+        });
+        context.functions.registerFunction({
+          name: "INFINITE",
+          minArgs: 0,
+          maxArgs: 0,
+          execute() { return Infinity; },
+        });
+        context.functions.registerFunction({
+          name: "REFERR",
+          minArgs: 0,
+          maxArgs: 0,
+          execute() { return { type: "#REF!" }; },
+        });
+      },
+    });
+    await api.applyOperations({
+      workbookId: workbook.id,
+      sheetId: workbook.activeSheetId,
+      atomic: true,
+      operations: [
+        { type: "formula.set", range: "A1", formula: "=THROWING()" },
+        { type: "formula.set", range: "A2", formula: "=INFINITE()" },
+        { type: "formula.set", range: "A3", formula: "=REFERR()" },
+      ],
+    });
+    expect(api.readRange({ sheetId: workbook.activeSheetId, range: "A1:A3" })).toEqual([
+      [{ type: "#VALUE!", message: "Plugin function THROWING failed" }],
+      [{ type: "#NUM!", message: "Plugin function returned a non-finite number" }],
+      [{ type: "#REF!" }],
+    ]);
+  });
+
+  it("rejects plugin functions that collide with built-in names", async () => {
+    const api = createOpenSheet();
+    await expect(api.usePlugin({
+      id: "function-collision",
+      setup(context) {
+        context.functions.registerFunction({ name: "sum", minArgs: 0, maxArgs: 0, execute: () => 0 });
+      },
+    })).rejects.toMatchObject({ code: "E_VALIDATION" });
+    expect(api.getPluginContributions().functions).toEqual([]);
+  });
 });

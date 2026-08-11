@@ -28,6 +28,7 @@ import {
   parseFormula,
   type FormulaContext,
   type FormulaDependencies,
+  type FunctionImpl,
 } from "@opensheet/formula-engine";
 import type { CellAddress, CellValue } from "@opensheet/shared";
 
@@ -56,6 +57,7 @@ interface SheetFormulaState {
 
 export class FormulaEngine {
   private readonly registry = createDefaultFunctions();
+  private readonly pluginFunctionNames = new Set<string>();
   private readonly maxReadsPerFormula: number;
   private readonly maxReadsPerTx: number;
 
@@ -65,6 +67,25 @@ export class FormulaEngine {
   constructor(options?: FormulaEngineOptions) {
     this.maxReadsPerFormula = options?.maxCellReadsPerFormula ?? DEFAULT_MAX_READS_PER_FORMULA;
     this.maxReadsPerTx = options?.maxCellReadsPerTransaction ?? DEFAULT_MAX_READS_PER_TX;
+  }
+
+  listFunctionNames(): readonly string[] {
+    return this.registry.list();
+  }
+
+  registerPluginFunction(name: string, implementation: FunctionImpl): void {
+    const key = name.toUpperCase();
+    if (this.registry.has(key)) {
+      throw new Error(`Formula function already registered: ${key}`);
+    }
+    this.registry.register(key, implementation);
+    this.pluginFunctionNames.add(key);
+  }
+
+  unregisterPluginFunction(name: string): boolean {
+    const key = name.toUpperCase();
+    if (!this.pluginFunctionNames.delete(key)) return false;
+    return this.registry.unregister(key);
   }
 
   // ── Per-sheet state accessors ───────────────────────────────────────────

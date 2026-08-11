@@ -59,7 +59,17 @@ export interface FormulaFunctionContribution {
   minArgs: number;
   maxArgs: number;
   description?: string;
+  /** Pure, synchronous implementation. Ranges remain lazy iterable views. */
+  execute?: PluginFormulaFunction;
 }
+
+export interface PluginRangeArgument {
+  readonly kind: "range";
+  values(): Iterable<CellValue>;
+}
+
+export type PluginFormulaArgument = CellValue | PluginRangeArgument;
+export type PluginFormulaFunction = (args: readonly PluginFormulaArgument[]) => CellValue;
 
 export interface FunctionRegistry {
   registerFunction(contribution: FormulaFunctionContribution): void;

@@ -22,6 +22,8 @@ interface InstalledPlugin {
 export interface PluginHostOptions {
   /** Runtime-reserved ids (for example built-in CommandBus command ids). */
   reservedCommandIds?: readonly string[];
+  /** Runtime-reserved formula names (for example built-in functions). */
+  reservedFunctionNames?: readonly string[];
 }
 
 /**
@@ -39,6 +41,7 @@ export class PluginHost implements OpenSheetPluginContext {
   private readonly plugins = new Map<string, InstalledPlugin>();
   private readonly installing = new Set<string>();
   private readonly reservedCommandIds: ReadonlySet<string>;
+  private readonly reservedFunctionNames: ReadonlySet<string>;
 
   readonly commands: CommandRegistry;
   readonly functions: FunctionRegistry;
@@ -47,6 +50,7 @@ export class PluginHost implements OpenSheetPluginContext {
 
   constructor(options?: PluginHostOptions) {
     this.reservedCommandIds = new Set(options?.reservedCommandIds ?? []);
+    this.reservedFunctionNames = new Set((options?.reservedFunctionNames ?? []).map((name) => name.toUpperCase()));
     const root = this.contextFor(undefined);
     this.commands = root.commands;
     this.functions = root.functions;
@@ -136,10 +140,26 @@ export class PluginHost implements OpenSheetPluginContext {
     };
     const functions: FunctionRegistry = {
       registerFunction: (contribution) => {
-        if (this.functionList.some((candidate) => candidate.name === contribution.name)) {
-          throw new SheetError("E_VALIDATION", `Duplicate function contribution: ${contribution.name}`);
+        if (typeof contribution.name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(contribution.name)) {
+          throw new SheetError("E_VALIDATION", "Plugin formula function name must be an identifier");
         }
-        const stored = { ...contribution };
+        const name = contribution.name.toUpperCase();
+        if (this.reservedFunctionNames.has(name)) {
+          throw new SheetError("E_VALIDATION", `Plugin formula function name is reserved by Runtime: ${name}`);
+        }
+        if (!Number.isSafeInteger(contribution.minArgs) || !Number.isSafeInteger(contribution.maxArgs) || contribution.minArgs < 0 || contribution.maxArgs < contribution.minArgs) {
+          throw new SheetError("E_VALIDATION", "Plugin formula function requires normalized non-negative integer argument bounds");
+        }
+        if (contribution.description !== undefined && typeof contribution.description !== "string") {
+          throw new SheetError("E_VALIDATION", "Plugin formula function description must be a string");
+        }
+        if (contribution.execute !== undefined && typeof contribution.execute !== "function") {
+          throw new SheetError("E_VALIDATION", "Plugin formula function execute must be a function");
+        }
+        if (this.functionList.some((candidate) => candidate.name === name)) {
+          throw new SheetError("E_VALIDATION", `Duplicate function contribution: ${name}`);
+        }
+        const stored = { ...contribution, name };
         this.functionList.push(stored);
         own(() => this.remove(this.functionList, stored));
       },
