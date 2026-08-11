@@ -21,11 +21,13 @@ export class CSVParser {
   private state: "fieldStart" | "unquoted" | "quoted" | "afterQuote" = "fieldStart";
   private recordJustEnded = false;
   private skipLF = false;
+  private sawInput = false;
 
   constructor(options?: CSVOptions) { this.delimiter = delimiterOf(options); }
 
   push(text: string): string[][] {
     if (typeof text !== "string") throw new SheetError("E_VALIDATION", "CSV text must be a string");
+    if (text.length > 0) this.sawInput = true;
     const rows: string[][] = [];
     for (let index = 0; index < text.length; index += 1) {
       const char = text[index]!;
@@ -58,6 +60,7 @@ export class CSVParser {
 
   finish(): string[][] {
     if (this.state === "quoted") throw new SheetError("E_VALIDATION", "CSV contains an unterminated quoted field");
+    if (!this.sawInput) return [];
     if (this.recordJustEnded) return [];
     this.row.push(this.field);
     const rows = [this.row];

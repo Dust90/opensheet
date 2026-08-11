@@ -27,6 +27,19 @@ describe("CSV codec", () => {
     ];
     expect(rows).toEqual([["a", "two\" quotes"], ["b", "c"]]);
   });
+  it("has empty-stream parity and matches one-shot parsing at every split point", () => {
+    const empty = new CSVParser();
+    expect(empty.finish()).toEqual([]);
+    const pushedEmpty = new CSVParser(); pushedEmpty.push("");
+    expect(pushedEmpty.finish()).toEqual([]);
+
+    const csv = 'a,"b,b","c""d"\r\n1,"two\nlines",3';
+    const expected = parseCSV(csv);
+    for (let split = 0; split <= csv.length; split += 1) {
+      const parser = new CSVParser();
+      expect([...parser.push(csv.slice(0, split)), ...parser.push(csv.slice(split)), ...parser.finish()]).toEqual(expected);
+    }
+  });
   it("supports an explicit delimiter and rejects malformed input", () => {
     expect(parseCSV("a;b\n1;2", { delimiter: ";" })).toEqual([["a", "b"], ["1", "2"]]);
     try {
