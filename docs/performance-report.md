@@ -38,4 +38,4 @@
 
 M6.1 提供 pnpm check:pack。
 
-它会从 pnpm pack 的 @injoysai/opensheet 依赖闭包 tarball 创建临时消费者，以本地 tarball overrides 离线安装，执行 Vite production build，断言 csv.worker-*.js 已输出，并在 Chromium 中真实执行 CSV import/export。该检查避免 monorepo source alias 掩盖发布后的 Worker URL 或 package export 问题。
+它会从 pnpm pack 的 @injoysai/opensheet 依赖闭包 tarball 创建临时消费者，以本地 tarball overrides 离线安装，执行 Vite production build，断言 csv.worker-*.js 已输出，并在 Chromium 中真实执行 Formula、Filter、Sort、Dedupe、插件与 CSV import/export。该检查避免 monorepo source alias 掩盖发布后的 Worker URL、package export 或运行时依赖问题。

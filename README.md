@@ -45,7 +45,7 @@ pnpm bench:csv         # M5 浏览器 Worker 100k × 20 CSV import/export benchm
 ```bash
 pnpm typecheck         # 全部包 tsc --noEmit
 pnpm check:boundaries  # 包间依赖边界检查（core/plugin-api 只依赖 shared 等）
-pnpm check:pack        # 从 tarball 安装的 Vite consumer + CSV Worker smoke test
+pnpm check:pack        # 从 tarball 安装的 Vite consumer：Formula / Filter / Sort / Dedupe / Plugin / CSV Worker smoke
 pnpm licenses:check    # 依赖许可证 allowlist 检查
 pnpm build             # 全部包 tsup 构建 + demo 生产构建
 ```

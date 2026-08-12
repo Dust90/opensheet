@@ -22,7 +22,7 @@ M6 的本地工程验证已完成。发布闭包已固定为 npmjs.org 上的 pu
 - pnpm typecheck、pnpm check:boundaries、pnpm licenses:check 和 pnpm build
 - 单 worker Playwright E2E
 - docs/performance-report.md 中记录的 Grid、Formula、Filter、Sort、Find、Dedupe 和 CSV 基准
-- pnpm check:pack：从 pnpm pack tarball 创建临时 consumer，离线安装、Vite 构建并在 Chromium 中执行真实 CSV Worker import/export
+- pnpm check:pack：从 pnpm pack tarball 创建临时 consumer，离线安装、Vite 构建并在 Chromium 中执行 Formula、Filter、Sort、Dedupe、插件和真实 CSV Worker import/export
 
 ## Release owner 决策
 
