@@ -1,6 +1,21 @@
 # M6 发布清单
 
-M6 的本地工程验证已完成。真正发布前仍需由 release owner 决定 registry、package 可见性和版本策略；当前 workspace package 均为 private 且版本为 0.1.0。
+M6 的本地工程验证已完成。发布闭包已固定为 npmjs.org 上的 public `@injoysai` package；尚未执行真正 publish。
+
+## 发布包
+
+以下 8 个包均为版本 0.1.0、MIT、`https://registry.npmjs.org/` 和 `access: public`：
+
+- `@injoysai/opensheet`
+- `@injoysai/opensheet-shared`
+- `@injoysai/opensheet-core`
+- `@injoysai/opensheet-commands`
+- `@injoysai/opensheet-history`
+- `@injoysai/opensheet-formula-engine`
+- `@injoysai/opensheet-import-export`
+- `@injoysai/opensheet-plugin-api`
+
+根 workspace、Demo、React、Canvas Renderer 和 Clipboard 保持 `private: true`，不会参与发布。
 
 ## 已完成的工程验证
 
@@ -11,15 +26,14 @@ M6 的本地工程验证已完成。真正发布前仍需由 release owner 决�
 
 ## Release owner 决策
 
-1. 确定发布 registry 与 package scope。
-2. 决定哪些 package 对外发布，并将对应 package 的 private 配置改为目标可见性。
-3. 确定首发版本、dist-tag 和 Git tag 策略。
-4. 确认 npm token、2FA、provenance 和组织访问权限。
-5. 确定 changelog 日期、GitHub Release 文案与发布审批人。
+1. 确认 npm organization `@injoysai` 已授予发布者对上述 8 个名称的权限。
+2. 确认 npm token、2FA、provenance 和组织访问权限。
+3. 决定是否先发布 `0.1.0-next.0`。若采用 prerelease，必须先将所有发布包改为该版本；同一版本不能先以 `next` 发布后再重新发布为 `latest`。
+4. 确定 changelog 日期、GitHub Release 文案与发布审批人。
 
 ## 发布前最后命令
 
-在以上决策完成且 package metadata 已更新后，依次运行：
+在以上决策完成后，依次运行：
 
 ```sh
 pnpm typecheck

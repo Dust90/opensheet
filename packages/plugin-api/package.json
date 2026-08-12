@@ -1,7 +1,16 @@
 {
   "name": "@injoysai/opensheet-plugin-api",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dust90/opensheet.git",
+    "directory": "packages/plugin-api"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

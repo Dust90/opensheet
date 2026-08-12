@@ -1,6 +1,6 @@
 # Changelog
 
-本文按增量方式记录面向发布的用户可见变更。当前所有 workspace package 仍标记为 private；0.1.0 是待发布的首个版本，并不表示已经发布到 npm registry。
+本文按增量方式记录面向发布的用户可见变更。`@injoysai/opensheet` 及其七个运行时依赖包已具备 npm public metadata；0.1.0 是待发布的首个稳定版本，并不表示已经发布到 npm registry。
 
 ## [0.1.0] - Pending release
 

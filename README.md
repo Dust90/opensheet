@@ -1,6 +1,6 @@
 # OpenSheet
 
-独立的高性能 Web 电子表格内核。基于 React 18、TypeScript 与 Canvas 2D，提供类传统电子表格的核心编辑体验，并以公开 API 供任何 Web / 桌面 / AI 宿主嵌入。
+InjoysAI 开发的独立高性能 Web 电子表格内核。基于 React 18、TypeScript 与 Canvas 2D，提供类传统电子表格的核心编辑体验，并以公开 API 供任何 Web / 桌面 / AI 宿主嵌入。
 
 OpenSheet 独立维护、独立构建、独立发布，不依赖任何专有商业电子表格组件。
 
