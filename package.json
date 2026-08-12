@@ -26,6 +26,7 @@
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:pack": "node scripts/check-pack.mjs",
     "release:dry-run": "node scripts/publish-dry-run.mjs",
+    "release:publish-next": "node scripts/publish-next.mjs",
     "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

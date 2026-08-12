@@ -47,6 +47,7 @@ pnpm typecheck         # 全部包 tsc --noEmit
 pnpm check:boundaries  # 包间依赖边界检查（core/plugin-api 只依赖 shared 等）
 pnpm check:pack        # 从 tarball 安装的 Vite consumer：Formula / Filter / Sort / Dedupe / Plugin / CSV Worker smoke
 pnpm release:dry-run   # 8 个公开包按依赖顺序 npm publish --dry-run（不实际发布）
+pnpm release:publish-next -- 0.1.0-next.0  # 显式确认版本后发布 8 个包到 npm tag next
 pnpm licenses:check    # 依赖许可证 allowlist 检查
 pnpm build             # 全部包 tsup 构建 + demo 生产构建
 ```

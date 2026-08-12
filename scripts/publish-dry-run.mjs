@@ -35,4 +35,4 @@ for (const directory of publicPackages) {
   );
 }
 
-console.log("\\nRelease dry-run passed for 8 public packages.");
+console.log("\nRelease dry-run passed for 8 public packages.");
