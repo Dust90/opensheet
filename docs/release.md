@@ -4,7 +4,7 @@ M6 的本地工程验证已完成。发布闭包已固定为 npmjs.org 上的 pu
 
 ## 发布包
 
-以下 8 个包均为版本 0.1.0、MIT、`https://registry.npmjs.org/` 和 `access: public`：
+以下 8 个包均为版本 0.1.0-next.0、MIT、`https://registry.npmjs.org/` 和 `access: public`：
 
 - `@injoysai/opensheet`
 - `@injoysai/opensheet-shared`
@@ -27,8 +27,7 @@ M6 的本地工程验证已完成。发布闭包已固定为 npmjs.org 上的 pu
 ## Release owner 决策
 
 1. 确认 npm token、2FA、provenance 和组织访问权限在正式 publish 时仍有效。
-2. 决定是否先发布 `0.1.0-next.0`。若采用 prerelease，必须先将所有发布包改为该版本；同一版本不能先以 `next` 发布后再重新发布为 `latest`。
-3. 确定 changelog 日期、GitHub Release 文案与发布审批人。
+2. 确定 changelog 日期、GitHub Release 文案与发布审批人。
 
 ## 发布前最后命令
 

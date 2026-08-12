@@ -118,8 +118,8 @@ try {
         if (!dependency.startsWith("@injoysai/opensheet")) continue;
         assert.equal(
           version,
-          "0.1.0",
-          `${manifest.name} tarball must pin ${dependency} to 0.1.0`,
+          manifest.version,
+          `${manifest.name} tarball must pin ${dependency} to ${manifest.version}`,
         );
       }
       return [manifest.name, `file:${join(tarballs, tarball)}`];
