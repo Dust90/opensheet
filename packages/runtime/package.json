@@ -28,12 +28,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@injoysai/opensheet-commands": "workspace:*",
-    "@injoysai/opensheet-core": "workspace:*",
-    "@injoysai/opensheet-history": "workspace:*",
-    "@injoysai/opensheet-plugin-api": "workspace:*",
-    "@injoysai/opensheet-shared": "workspace:*",
-    "@injoysai/opensheet-formula-engine": "workspace:*",
-    "@injoysai/opensheet-import-export": "workspace:*"
+    "@injoysai/opensheet-commands": "workspace:0.1.0",
+    "@injoysai/opensheet-core": "workspace:0.1.0",
+    "@injoysai/opensheet-history": "workspace:0.1.0",
+    "@injoysai/opensheet-plugin-api": "workspace:0.1.0",
+    "@injoysai/opensheet-shared": "workspace:0.1.0",
+    "@injoysai/opensheet-formula-engine": "workspace:0.1.0",
+    "@injoysai/opensheet-import-export": "workspace:0.1.0"
   }
 }

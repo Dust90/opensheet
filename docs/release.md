@@ -26,10 +26,9 @@ M6 的本地工程验证已完成。发布闭包已固定为 npmjs.org 上的 pu
 
 ## Release owner 决策
 
-1. 确认 npm organization `@injoysai` 已授予发布者对上述 8 个名称的权限。
-2. 确认 npm token、2FA、provenance 和组织访问权限。
-3. 决定是否先发布 `0.1.0-next.0`。若采用 prerelease，必须先将所有发布包改为该版本；同一版本不能先以 `next` 发布后再重新发布为 `latest`。
-4. 确定 changelog 日期、GitHub Release 文案与发布审批人。
+1. 确认 npm token、2FA、provenance 和组织访问权限在正式 publish 时仍有效。
+2. 决定是否先发布 `0.1.0-next.0`。若采用 prerelease，必须先将所有发布包改为该版本；同一版本不能先以 `next` 发布后再重新发布为 `latest`。
+3. 确定 changelog 日期、GitHub Release 文案与发布审批人。
 
 ## 发布前最后命令
 
@@ -42,7 +41,9 @@ pnpm licenses:check
 pnpm build
 pnpm test:e2e --workers=1
 pnpm check:pack
-npm publish --dry-run
+pnpm release:dry-run
 ```
+
+`pnpm release:dry-run` 按固定 allowlist 和依赖顺序逐一执行 8 个公开包的 `npm publish --dry-run --access public --tag next --registry https://registry.npmjs.org/`；它不会发布 root、Demo、React、Renderer 或 Clipboard。
 
 发布后应从 registry 创建新的 consumer 项目，重复 CSV Worker import/export smoke test，确认 tarball 与 registry metadata 均可用。

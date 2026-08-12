@@ -82,6 +82,46 @@ try {
         tarball !== undefined,
         `Missing packed tarball for ${manifest.name}`,
       );
+      const packedManifest = JSON.parse(
+        execFileSync(
+          "tar",
+          ["-xOf", join(tarballs, tarball), "package/package.json"],
+          {
+            encoding: "utf8",
+          },
+        ),
+      );
+      const packedFiles = execFileSync(
+        "tar",
+        ["-tf", join(tarballs, tarball)],
+        {
+          encoding: "utf8",
+        },
+      );
+      assert(
+        packedFiles.split("\n").includes("package/LICENSE"),
+        `${manifest.name} tarball must include MIT LICENSE`,
+      );
+      assert.equal(
+        packedManifest.private,
+        undefined,
+        `${manifest.name} must be publishable`,
+      );
+      assert.equal(
+        packedManifest.publishConfig?.registry,
+        "https://registry.npmjs.org/",
+        `${manifest.name} must target npmjs.org`,
+      );
+      for (const [dependency, version] of Object.entries(
+        packedManifest.dependencies ?? {},
+      )) {
+        if (!dependency.startsWith("@injoysai/opensheet")) continue;
+        assert.equal(
+          version,
+          "0.1.0",
+          `${manifest.name} tarball must pin ${dependency} to 0.1.0`,
+        );
+      }
       return [manifest.name, `file:${join(tarballs, tarball)}`];
     }),
   );

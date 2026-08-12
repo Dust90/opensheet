@@ -25,6 +25,7 @@
     "bench:sort": "pnpm exec playwright test -c playwright.perf.config.ts m4-sort.perf.spec.ts",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:pack": "node scripts/check-pack.mjs",
+    "release:dry-run": "node scripts/publish-dry-run.mjs",
     "licenses:check": "node scripts/licenses-check.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

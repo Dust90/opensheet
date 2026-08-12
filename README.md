@@ -46,6 +46,7 @@ pnpm bench:csv         # M5 浏览器 Worker 100k × 20 CSV import/export benchm
 pnpm typecheck         # 全部包 tsc --noEmit
 pnpm check:boundaries  # 包间依赖边界检查（core/plugin-api 只依赖 shared 等）
 pnpm check:pack        # 从 tarball 安装的 Vite consumer：Formula / Filter / Sort / Dedupe / Plugin / CSV Worker smoke
+pnpm release:dry-run   # 8 个公开包按依赖顺序 npm publish --dry-run（不实际发布）
 pnpm licenses:check    # 依赖许可证 allowlist 检查
 pnpm build             # 全部包 tsup 构建 + demo 生产构建
 ```

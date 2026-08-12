@@ -28,8 +28,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@injoysai/opensheet-shared": "workspace:*",
-    "@injoysai/opensheet-core": "workspace:*",
-    "@injoysai/opensheet-formula-engine": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:0.1.0",
+    "@injoysai/opensheet-core": "workspace:0.1.0",
+    "@injoysai/opensheet-formula-engine": "workspace:0.1.0"
   }
 }

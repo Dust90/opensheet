@@ -32,6 +32,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@injoysai/opensheet-shared": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:0.1.0"
   }
 }
