@@ -56,6 +56,8 @@ pnpm build             # 全部包 tsup 构建 + demo 生产构建
 
 `@injoysai/opensheet` 提供完整的公开组合根。CSV 导入始终新建 Worksheet 并以 A1 为起点，失败不会留下半成品 Sheet；CSV 导出使用 computed values 的 used range。插件命令返回内置 operation 组成一个原子 History batch；插件公式函数为纯同步函数并复用公式引擎的 lazy range 与预算。
 
+完整的安装、Runtime、事务、公式、数据操作、CSV、Snapshot 与插件接入说明见 [接入指南](./docs/getting-started.md)。
+
 ```ts
 import { createOpenSheet } from "@injoysai/opensheet";
 
