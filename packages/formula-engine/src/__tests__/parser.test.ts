@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseFormula, parseCellRef } from "../parser.js";
 import type { Expr } from "../ast.js";
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 
 describe("parseFormula", () => {
   it("parses arithmetic with precedence (-2^2 = -(2^2))", () => {

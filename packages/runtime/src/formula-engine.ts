@@ -18,8 +18,8 @@
 //   Cross-sheet refs are not supported in M3 but the state is correctly
 //   isolated so that Sheet2 recalc never touches Sheet1's graph.
 
-import type { WorkbookView } from "@opensheet/core";
-import type { PendingChange } from "@opensheet/commands";
+import type { WorkbookView } from "@injoysai/opensheet-core";
+import type { PendingChange } from "@injoysai/opensheet-commands";
 import {
   createDefaultFunctions,
   DependencyGraph,
@@ -31,8 +31,8 @@ import {
   type FormulaContext,
   type FormulaDependencies,
   type FunctionImpl,
-} from "@opensheet/formula-engine";
-import type { CellAddress, CellValue } from "@opensheet/shared";
+} from "@injoysai/opensheet-formula-engine";
+import type { CellAddress, CellValue } from "@injoysai/opensheet-shared";
 
 export interface FormulaEngineOptions {
   /** Max cell reads per single formula evaluation (M3.5 guardrail). */
@@ -125,7 +125,7 @@ export class FormulaEngine {
   }
 
   /** Return formula cells in the given range from the sheet's Graph (Fix 2). */
-  graphFormulaCellsInRange(sheetId: string, range: { startRow: number; startCol: number; endRow: number; endCol: number }): import("@opensheet/shared").CellAddress[] {
+  graphFormulaCellsInRange(sheetId: string, range: { startRow: number; startCol: number; endRow: number; endCol: number }): import("@injoysai/opensheet-shared").CellAddress[] {
     return this.states.get(sheetId)?.graph.formulaCellsInRange(range) ?? [];
   }
 

@@ -52,10 +52,10 @@ pnpm build             # 全部包 tsup 构建 + demo 生产构建
 
 ## Public SDK API
 
-`@opensheet/runtime` 提供完整的公开组合根。CSV 导入始终新建 Worksheet 并以 A1 为起点，失败不会留下半成品 Sheet；CSV 导出使用 computed values 的 used range。插件命令返回内置 operation 组成一个原子 History batch；插件公式函数为纯同步函数并复用公式引擎的 lazy range 与预算。
+`@injoysai/opensheet` 提供完整的公开组合根。CSV 导入始终新建 Worksheet 并以 A1 为起点，失败不会留下半成品 Sheet；CSV 导出使用 computed values 的 used range。插件命令返回内置 operation 组成一个原子 History batch；插件公式函数为纯同步函数并复用公式引擎的 lazy range 与预算。
 
 ```ts
-import { createOpenSheet } from "@opensheet/runtime";
+import { createOpenSheet } from "@injoysai/opensheet";
 
 const sheet = createOpenSheet();
 

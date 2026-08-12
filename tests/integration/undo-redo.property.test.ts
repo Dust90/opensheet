@@ -3,9 +3,9 @@
 
 import { describe, it } from "vitest";
 import fc from "fast-check";
-import { CommandBus, createDefaultRegistry } from "@opensheet/commands";
-import { toWorkbookSnapshot, Workbook, Worksheet } from "@opensheet/core";
-import { HistoryManager } from "@opensheet/history";
+import { CommandBus, createDefaultRegistry } from "@injoysai/opensheet-commands";
+import { toWorkbookSnapshot, Workbook, Worksheet } from "@injoysai/opensheet-core";
+import { HistoryManager } from "@injoysai/opensheet-history";
 import { expect } from "vitest";
 
 function setup() {

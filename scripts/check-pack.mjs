@@ -43,7 +43,7 @@ let server;
 try {
   execFileSync(
     "pnpm",
-    ["--filter", "@opensheet/runtime...", "-r", "run", "build"],
+    ["--filter", "@injoysai/opensheet...", "-r", "run", "build"],
     {
       cwd: root,
       stdio: "inherit",
@@ -53,7 +53,7 @@ try {
     "pnpm",
     [
       "--filter",
-      "@opensheet/runtime...",
+      "@injoysai/opensheet...",
       "-r",
       "pack",
       "--pack-destination",
@@ -76,9 +76,8 @@ try {
       const manifest = JSON.parse(
         readFileSync(join(root, "packages", directory, "package.json"), "utf8"),
       );
-      const tarball = packed.find((name) =>
-        name.startsWith(`opensheet-${directory}-`),
-      );
+      const tarballPrefix = `${manifest.name.replace(/^@/, "").replace("/", "-")}-`;
+      const tarball = packed.find((name) => name.startsWith(tarballPrefix));
       assert(
         tarball !== undefined,
         `Missing packed tarball for ${manifest.name}`,
@@ -113,7 +112,7 @@ try {
   writeFileSync(
     join(consumer, "main.js"),
     `
-import { createOpenSheet } from "@opensheet/runtime";
+import { createOpenSheet } from "@injoysai/opensheet";
 
 const api = createOpenSheet();
 const workbook = api.createWorkbook({ name: "Pack smoke" });

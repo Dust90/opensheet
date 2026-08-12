@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatAddress, inferPrimitive, type CellPrimitive } from "@opensheet/shared";
-import { SheetGrid, FilteredRowProjection } from "@opensheet/renderer-canvas";
-import { createOpenSheet, createPersistence, type WorkbookInfo } from "@opensheet/runtime";
-import { cellsToTSV, parseTSV } from "@opensheet/clipboard";
+import { formatAddress, inferPrimitive, type CellPrimitive } from "@injoysai/opensheet-shared";
+import { SheetGrid, FilteredRowProjection } from "@injoysai/opensheet-renderer-canvas";
+import { createOpenSheet, createPersistence, type WorkbookInfo } from "@injoysai/opensheet";
+import { cellsToTSV, parseTSV } from "@injoysai/opensheet-clipboard";
 
 /**
  * M2 demo: DOM editor + clipboard + structure/style commands + persistence.

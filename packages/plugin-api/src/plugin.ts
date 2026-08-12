@@ -1,4 +1,4 @@
-// Plugin contracts. plugin-api depends ONLY on @opensheet/shared:
+// Plugin contracts. plugin-api depends ONLY on @injoysai/opensheet-shared:
 // it never sees runtime, React, or the full OpenSheetAPI.
 
 import type {
@@ -9,7 +9,7 @@ import type {
   FilterSpec,
   SortSpec,
   Unsubscribe,
-} from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
 
 /** Built-in operation vocabulary a plugin command may compose atomically. */
 export type PluginOperation =

@@ -1,4 +1,4 @@
-// @opensheet/shared — sparse cell storage contract
+// @injoysai/opensheet-shared — sparse cell storage contract
 
 import type { CellData } from "./cell.js";
 import type { Range } from "./range.js";

@@ -3,8 +3,8 @@
 // rebuild — all through the real Command Bus + runtime composition root.
 
 import { describe, expect, it } from "vitest";
-import { createOpenSheet } from "@opensheet/runtime";
-import type { CellValue } from "@opensheet/shared";
+import { createOpenSheet } from "@injoysai/opensheet";
+import type { CellValue } from "@injoysai/opensheet-shared";
 
 function setup() {
   const api = createOpenSheet();

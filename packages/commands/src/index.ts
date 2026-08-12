@@ -1,4 +1,4 @@
-// @opensheet/commands — command bus, registry, transactions, inverse journal.
+// @injoysai/opensheet-commands — command bus, registry, transactions, inverse journal.
 
 export { CommandBus } from "./bus.js";
 export type { CommandBusOptions, OperationEnvelope } from "./bus.js";

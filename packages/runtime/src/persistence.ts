@@ -9,14 +9,14 @@
 //     current workbook — restore() returns null and leaves storage untouched.
 //   - Debounced saves coalesce bursts of edits into one write.
 
-import type { SupportedWorkbookSnapshot, Unsubscribe } from "@opensheet/shared";
+import type { SupportedWorkbookSnapshot, Unsubscribe } from "@injoysai/opensheet-shared";
 import {
   CELL_ERROR_TYPES,
   MAX_COLS,
   MAX_ROWS,
   validateFilterSpec,
-} from "@opensheet/shared";
-import { parseFormula } from "@opensheet/formula-engine";
+} from "@injoysai/opensheet-shared";
+import { parseFormula } from "@injoysai/opensheet-formula-engine";
 import type { OpenSheetAPI, WorkbookInfo } from "./api.js";
 
 export interface StorageLike {
@@ -124,7 +124,7 @@ function validateWorksheetSnapshot(
       } catch {
         return false;
       }
-      const filter = s.filter as import("@opensheet/shared").FilterSpec;
+      const filter = s.filter as import("@injoysai/opensheet-shared").FilterSpec;
       if (filter.range.endRow >= rowCount || filter.range.endCol >= columnCount) return false;
     }
   }

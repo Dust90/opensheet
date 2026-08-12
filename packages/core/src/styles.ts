@@ -1,6 +1,6 @@
 // Workbook-level style table with hash-based deduplication.
 
-import type { CellStyle } from "@opensheet/shared";
+import type { CellStyle } from "@injoysai/opensheet-shared";
 
 function stableStringify(style: CellStyle): string {
   const keys = Object.keys(style).sort() as (keyof CellStyle)[];

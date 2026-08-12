@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cellsToTSV, parseTSV } from "../tsv.js";
-import type { CellPrimitive } from "@opensheet/shared";
+import type { CellPrimitive } from "@injoysai/opensheet-shared";
 
 describe("cellsToTSV", () => {
   it("encodes a rectangular matrix with tabs and CRLF rows", () => {

@@ -1,4 +1,4 @@
-import { isSheetError, SheetError } from "@opensheet/shared";
+import { isSheetError, SheetError } from "@injoysai/opensheet-shared";
 import { validateCSVWorkerRequest, type CSVWorkerResponse } from "./csv-worker-protocol.js";
 import { CSVWorkerTaskHandler } from "./csv-worker-tasks.js";
 

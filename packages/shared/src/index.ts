@@ -1,4 +1,4 @@
-// @opensheet/shared — zero-dependency contracts for all packages
+// @injoysai/opensheet-shared — zero-dependency contracts for all packages
 
 export * from "./errors.js";
 export * from "./address.js";

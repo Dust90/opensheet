@@ -6,7 +6,7 @@
 // non-frozen row/col (frozenRowCount/frozenColCount), so frozen content is
 // never duplicated.
 
-import type { CellAddress } from "@opensheet/shared";
+import type { CellAddress } from "@injoysai/opensheet-shared";
 import type { AxisMetrics } from "./axis-metrics.js";
 
 export interface ViewportInput {

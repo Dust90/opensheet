@@ -1,4 +1,4 @@
-// @opensheet/shared — change event contracts
+// @injoysai/opensheet-shared — change event contracts
 
 import type { Range } from "./range.js";
 

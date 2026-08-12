@@ -1,4 +1,4 @@
-// @opensheet/shared — data operation contracts (M4: sort / filter / find / dedupe)
+// @injoysai/opensheet-shared — data operation contracts (M4: sort / filter / find / dedupe)
 //
 // Frozen base semantics (see docs/m4-data-operations.md):
 // - Blank: `null` is the ONLY true blank. "" is an ordinary string. null !== "".

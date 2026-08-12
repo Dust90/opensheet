@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/plugin-api",
+  "name": "@injoysai/opensheet-plugin-api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,6 +19,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:*"
   }
 }

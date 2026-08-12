@@ -1,6 +1,6 @@
 // In-memory plugin host: registries + hook dispatch + plugin lifecycle.
 
-import { SheetError, type Unsubscribe } from "@opensheet/shared";
+import { SheetError, type Unsubscribe } from "@injoysai/opensheet-shared";
 import type {
   CommandContribution,
   CommandHookPayload,

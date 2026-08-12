@@ -1,7 +1,7 @@
 // filter.apply / filter.clear: Worksheet filter state with complete inverse
 // journals. Filtering affects visibility only, never formula values.
 
-import { SheetError, validateFilterSpec, type FilterSpec, type Range } from "@opensheet/shared";
+import { SheetError, validateFilterSpec, type FilterSpec, type Range } from "@injoysai/opensheet-shared";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 export interface FilterApplyPayload {
@@ -67,10 +67,10 @@ function assertFilterFitsSheet(spec: FilterSpec, sheet: { rowCount: number; colu
 }
 
 function emitFilterChange(
-  workbook: import("@opensheet/core").Workbook,
+  workbook: import("@injoysai/opensheet-core").Workbook,
   sheetId: string,
   range: Range,
-  source: import("@opensheet/shared").ChangeSource,
+  source: import("@injoysai/opensheet-shared").ChangeSource,
 ): void {
   workbook.emit({
     workbookId: workbook.id,
@@ -87,7 +87,7 @@ function makeFilterJournal(init: {
   range: Range;
   previous: FilterSpec | null;
   next: FilterSpec | null;
-  apply: (filter: FilterSpec | null, source: import("@opensheet/shared").ChangeSource) => void;
+  apply: (filter: FilterSpec | null, source: import("@injoysai/opensheet-shared").ChangeSource) => void;
 }): JournalEntry {
   const { label, sheetId, range, previous, next, apply } = init;
   return {

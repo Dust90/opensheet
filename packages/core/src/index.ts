@@ -1,4 +1,4 @@
-// @opensheet/core — workbook data model. Depends only on @opensheet/shared.
+// @injoysai/opensheet-core — workbook data model. Depends only on @injoysai/opensheet-shared.
 
 export { Worksheet } from "./worksheet.js";
 export type { WorksheetInit } from "./worksheet.js";

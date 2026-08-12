@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { CommandBus, createDefaultRegistry, type JournalBatch } from "@opensheet/commands";
-import { Workbook, Worksheet } from "@opensheet/core";
+import { CommandBus, createDefaultRegistry, type JournalBatch } from "@injoysai/opensheet-commands";
+import { Workbook, Worksheet } from "@injoysai/opensheet-core";
 import { HistoryManager } from "../index.js";
 
 function setup(historyOptions?: ConstructorParameters<typeof HistoryManager>[0]) {

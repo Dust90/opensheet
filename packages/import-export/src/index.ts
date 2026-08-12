@@ -1,4 +1,4 @@
-// @opensheet/import-export
+// @injoysai/opensheet-import-export
 export { CSVParser, parseCSV, stringifyCSV, validateCSVOptions } from "./csv.js";
 export type { CSVOptions } from "./csv.js";
 export { validateCSVWorkerRequest } from "./csv-worker-protocol.js";

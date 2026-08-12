@@ -1,11 +1,11 @@
-import type { WorksheetView } from "@opensheet/core";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 import {
   isCellError,
   SheetError,
   validateSortSpec,
   type CellValue,
   type SortSpec,
-} from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
 
 /** Locale used when a SortSpec does not explicitly specify one. */
 export const DEFAULT_SORT_LOCALE = "en-US";

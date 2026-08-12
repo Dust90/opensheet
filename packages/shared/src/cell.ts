@@ -1,4 +1,4 @@
-// @opensheet/shared — cell data contracts
+// @injoysai/opensheet-shared — cell data contracts
 
 export type CellPrimitive = string | number | boolean | null;
 

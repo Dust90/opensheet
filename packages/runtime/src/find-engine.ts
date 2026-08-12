@@ -1,5 +1,5 @@
-import type { WorksheetView } from "@opensheet/core";
-import type { CellAddress, CellValue, FindOptions } from "@opensheet/shared";
+import type { WorksheetView } from "@injoysai/opensheet-core";
+import type { CellAddress, CellValue, FindOptions } from "@injoysai/opensheet-shared";
 
 export type FindEngineOptions = Pick<FindOptions, "query" | "matchCase" | "wholeCell" | "searchIn" | "direction">;
 

@@ -3,7 +3,7 @@
 // phase 1. Ranges are stored as intervals (never expanded), with
 // containment queries against changed cells.
 
-import type { CellAddress } from "@opensheet/shared";
+import type { CellAddress } from "@injoysai/opensheet-shared";
 import type { CellRangeRef } from "./ast.js";
 import { rangeBounds } from "./ast.js";
 
@@ -206,7 +206,7 @@ export class DependencyGraph {
    *       excluding direct cells and cyclic members.
    *   cyclic — actual cycle members (write #CYCLE! before downstream pass).
    */
-  topoOrderForChanges(changes: readonly { sheetId: string; range: import("@opensheet/shared").Range }[]): {
+  topoOrderForChanges(changes: readonly { sheetId: string; range: import("@injoysai/opensheet-shared").Range }[]): {
     directlyChangedFormulas: CellAddress[];
     order: CellAddress[];
     cyclic: CellAddress[];

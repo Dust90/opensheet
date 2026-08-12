@@ -8,8 +8,8 @@
 //
 // Pure module: no DOM, no Worksheet access — unit-testable in node.
 
-import type { Range } from "@opensheet/shared";
-import { SheetError } from "@opensheet/shared";
+import type { Range } from "@injoysai/opensheet-shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 
 export interface RowProjection {
   readonly physicalRowCount: number;

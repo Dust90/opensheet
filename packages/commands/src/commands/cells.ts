@@ -6,9 +6,9 @@
 // style removes the sparse entry; a cell carrying ONLY style survives as
 // { value: null, styleId }.
 
-import type { CellData, CellPrimitive, Range } from "@opensheet/shared";
-import { parseRange, SheetError } from "@opensheet/shared";
-import type { Worksheet } from "@opensheet/core";
+import type { CellData, CellPrimitive, Range } from "@injoysai/opensheet-shared";
+import { parseRange, SheetError } from "@injoysai/opensheet-shared";
+import type { Worksheet } from "@injoysai/opensheet-core";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 type CapturedCell = { row: number; col: number; previous: CellData | undefined };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CommandBus, createDefaultRegistry } from "@opensheet/commands";
-import { toWorkbookSnapshot, Workbook, Worksheet } from "@opensheet/core";
-import { HistoryManager } from "@opensheet/history";
+import { CommandBus, createDefaultRegistry } from "@injoysai/opensheet-commands";
+import { toWorkbookSnapshot, Workbook, Worksheet } from "@injoysai/opensheet-core";
+import { HistoryManager } from "@injoysai/opensheet-history";
 
 function setup() {
   const workbook = new Workbook({ id: "wb", name: "Book" });
@@ -9,7 +9,7 @@ function setup() {
   workbook.addSheet(sheet);
   const history = new HistoryManager();
   const bus = new CommandBus(workbook, { history, registry: createDefaultRegistry() });
-  const events: import("@opensheet/shared").ChangeEvent[] = [];
+  const events: import("@injoysai/opensheet-shared").ChangeEvent[] = [];
   workbook.onChange((event) => events.push(event));
   return { workbook, sheet, bus, history, events };
 }

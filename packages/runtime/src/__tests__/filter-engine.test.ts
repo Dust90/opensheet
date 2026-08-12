@@ -1,5 +1,5 @@
-import type { WorksheetView } from "@opensheet/core";
-import type { CellValue, FilterCondition, FilterSpec } from "@opensheet/shared";
+import type { WorksheetView } from "@injoysai/opensheet-core";
+import type { CellValue, FilterCondition, FilterSpec } from "@injoysai/opensheet-shared";
 import { describe, expect, it } from "vitest";
 import { evaluateVisibleRows, rowMatchesFilter } from "../filter-engine.js";
 import { createOpenSheet } from "../create-opensheet.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import { CSVParser, parseCSV, stringifyCSV } from "../csv.js";
 
 describe("CSV codec", () => {

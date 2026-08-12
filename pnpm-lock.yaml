@@ -237,22 +237,22 @@ importers:
 
   apps/demo:
     dependencies:
-      '@opensheet/clipboard':
-        specifier: workspace:*
-        version: link:../../packages/clipboard
-      '@opensheet/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@opensheet/react':
-        specifier: workspace:*
-        version: link:../../packages/react
-      '@opensheet/renderer-canvas':
-        specifier: workspace:*
-        version: link:../../packages/renderer-canvas
-      '@opensheet/runtime':
+      '@injoysai/opensheet':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@opensheet/shared':
+      '@injoysai/opensheet-clipboard':
+        specifier: workspace:*
+        version: link:../../packages/clipboard
+      '@injoysai/opensheet-core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@injoysai/opensheet-react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      '@injoysai/opensheet-renderer-canvas':
+        specifier: workspace:*
+        version: link:../../packages/renderer-canvas
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../../packages/shared
       react:
@@ -304,70 +304,70 @@ importers:
 
   packages/clipboard:
     dependencies:
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/commands:
     dependencies:
-      '@opensheet/core':
+      '@injoysai/opensheet-core':
         specifier: workspace:*
         version: link:../core
-      '@opensheet/formula-engine':
+      '@injoysai/opensheet-formula-engine':
         specifier: workspace:*
         version: link:../formula-engine
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/core:
     dependencies:
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/formula-engine:
     dependencies:
-      '@opensheet/core':
+      '@injoysai/opensheet-core':
         specifier: workspace:*
         version: link:../core
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/history:
     dependencies:
-      '@opensheet/commands':
+      '@injoysai/opensheet-commands':
         specifier: workspace:*
         version: link:../commands
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/import-export:
     dependencies:
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/plugin-api:
     dependencies:
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/react:
     dependencies:
-      '@opensheet/plugin-api':
-        specifier: workspace:*
-        version: link:../plugin-api
-      '@opensheet/renderer-canvas':
-        specifier: workspace:*
-        version: link:../renderer-canvas
-      '@opensheet/runtime':
+      '@injoysai/opensheet':
         specifier: workspace:*
         version: link:../runtime
-      '@opensheet/shared':
+      '@injoysai/opensheet-plugin-api':
+        specifier: workspace:*
+        version: link:../plugin-api
+      '@injoysai/opensheet-renderer-canvas':
+        specifier: workspace:*
+        version: link:../renderer-canvas
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
       react:
@@ -379,37 +379,37 @@ importers:
 
   packages/renderer-canvas:
     dependencies:
-      '@opensheet/core':
+      '@injoysai/opensheet-core':
         specifier: workspace:*
         version: link:../core
-      '@opensheet/plugin-api':
+      '@injoysai/opensheet-plugin-api':
         specifier: workspace:*
         version: link:../plugin-api
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 
   packages/runtime:
     dependencies:
-      '@opensheet/commands':
+      '@injoysai/opensheet-commands':
         specifier: workspace:*
         version: link:../commands
-      '@opensheet/core':
+      '@injoysai/opensheet-core':
         specifier: workspace:*
         version: link:../core
-      '@opensheet/formula-engine':
+      '@injoysai/opensheet-formula-engine':
         specifier: workspace:*
         version: link:../formula-engine
-      '@opensheet/history':
+      '@injoysai/opensheet-history':
         specifier: workspace:*
         version: link:../history
-      '@opensheet/import-export':
+      '@injoysai/opensheet-import-export':
         specifier: workspace:*
         version: link:../import-export
-      '@opensheet/plugin-api':
+      '@injoysai/opensheet-plugin-api':
         specifier: workspace:*
         version: link:../plugin-api
-      '@opensheet/shared':
+      '@injoysai/opensheet-shared':
         specifier: workspace:*
         version: link:../shared
 

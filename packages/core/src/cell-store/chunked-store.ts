@@ -1,6 +1,6 @@
 // Candidate C: chunked storage — Map<chunkKey, Map<innerKey, CellData>>.
 
-import type { CellData, CellStore, CellStoreFactory, Range } from "@opensheet/shared";
+import type { CellData, CellStore, CellStoreFactory, Range } from "@injoysai/opensheet-shared";
 
 /** 128 rows × 128 cols per chunk. */
 const CHUNK_SHIFT = 7;

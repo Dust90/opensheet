@@ -2,9 +2,9 @@
 // journal round-trips through the Command Bus and History.
 
 import { describe, expect, it } from "vitest";
-import { Workbook, Worksheet } from "@opensheet/core";
-import { CommandBus, createDefaultRegistry } from "@opensheet/commands";
-import { HistoryManager } from "@opensheet/history";
+import { Workbook, Worksheet } from "@injoysai/opensheet-core";
+import { CommandBus, createDefaultRegistry } from "@injoysai/opensheet-commands";
+import { HistoryManager } from "@injoysai/opensheet-history";
 
 function makeWorkbook() {
   const workbook = new Workbook({ id: "wb", name: "wb" });

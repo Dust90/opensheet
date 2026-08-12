@@ -15,8 +15,8 @@ export function isSpecialFormName(name: string): boolean {
   return (SPECIAL_FORM_NAMES as readonly string[]).includes(name.toUpperCase());
 }
 
-import type { CellValue } from "@opensheet/shared";
-import { isCellError } from "@opensheet/shared";
+import type { CellValue } from "@injoysai/opensheet-shared";
+import { isCellError } from "@injoysai/opensheet-shared";
 import type { CellRangeValue, FormulaArgument } from "./evaluate.js";
 import { finiteNumber } from "./numeric.js";
 

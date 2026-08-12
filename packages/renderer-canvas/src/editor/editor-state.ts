@@ -9,11 +9,11 @@
 // with key "Process" or similar and the real Enter arrives AFTER
 // compositionend, when phase is "editing" again.
 //
-// Text→primitive inference and display-text formatting live in @opensheet/
+// Text→primitive inference and display-text formatting live in the shared package.
 // shared (infer.ts) so the editor and the clipboard paste path share one
 // canonical implementation.
 
-export { cellDisplayText, inferPrimitive } from "@opensheet/shared";
+export { cellDisplayText, inferPrimitive } from "@injoysai/opensheet-shared";
 
 export type EditorPhase = "idle" | "editing" | "composing";
 

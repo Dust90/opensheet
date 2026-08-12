@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/commands",
+  "name": "@injoysai/opensheet-commands",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,8 +19,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*",
-    "@opensheet/core": "workspace:*",
-    "@opensheet/formula-engine": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:*",
+    "@injoysai/opensheet-core": "workspace:*",
+    "@injoysai/opensheet-formula-engine": "workspace:*"
   }
 }

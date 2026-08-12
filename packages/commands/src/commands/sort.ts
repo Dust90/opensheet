@@ -1,5 +1,5 @@
-import { SheetError, type CellData, type Range, type SortSpec, validateSortSpec } from "@opensheet/shared";
-import { translateFormulaReferences } from "@opensheet/formula-engine";
+import { SheetError, type CellData, type Range, type SortSpec, validateSortSpec } from "@injoysai/opensheet-shared";
+import { translateFormulaReferences } from "@injoysai/opensheet-formula-engine";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 import { buildSortPlan, conflictsWithFilter, type SortPlan } from "../sort-plan.js";
 
@@ -32,7 +32,7 @@ function cloneSortSpec(spec: SortSpec): SortSpec {
 }
 
 interface FormulaMove { sourceRow: number; row: number; col: number; original: string; translated: string; }
-function collectTranslations(sheet: import("@opensheet/core").Worksheet, range: Range, plan: SortPlan): FormulaMove[] {
+function collectTranslations(sheet: import("@injoysai/opensheet-core").Worksheet, range: Range, plan: SortPlan): FormulaMove[] {
   const moves: FormulaMove[] = [];
   for (let source = 0; source < plan.bodyRowCount; source += 1) {
     const dest = plan.sourceToDestination[source]!;
@@ -46,7 +46,7 @@ function collectTranslations(sheet: import("@opensheet/core").Worksheet, range: 
   }
   return moves;
 }
-function applyPermutation(sheet: import("@opensheet/core").Worksheet, range: Range, plan: SortPlan, formulas: readonly FormulaMove[], inverse: boolean): void {
+function applyPermutation(sheet: import("@injoysai/opensheet-core").Worksheet, range: Range, plan: SortPlan, formulas: readonly FormulaMove[], inverse: boolean): void {
   // One dense column buffer avoids Map hashing while retaining O(rows)
   // temporary space instead of duplicating the whole sorted rectangle.
   const sourceForDestination = inverse ? plan.sourceToDestination : plan.destinationToSource;
@@ -66,5 +66,5 @@ function applyPermutation(sheet: import("@opensheet/core").Worksheet, range: Ran
     if (data !== undefined) sheet.setCell(row, move.col, { ...data, formula: inverse ? move.original : move.translated });
   }
 }
-function emit(workbook: import("@opensheet/core").Workbook, sheetId: string, range: Range, source: import("@opensheet/shared").ChangeSource): void { workbook.emit({ workbookId: workbook.id, sheetId, changes: [{ range, kind: "reorder" }], source, batch: false }); }
+function emit(workbook: import("@injoysai/opensheet-core").Workbook, sheetId: string, range: Range, source: import("@injoysai/opensheet-shared").ChangeSource): void { workbook.emit({ workbookId: workbook.id, sheetId, changes: [{ range, kind: "reorder" }], source, batch: false }); }
 function journal(sheetId: string, range: Range, plan: SortPlan, formulas: FormulaMove[]): JournalEntry { return { label: "range.sort", affected: [{ sheetId, range, kind: "reorder" }], approxBytes: 256 + plan.destinationToSource.byteLength + plan.sourceToDestination.byteLength + formulas.reduce((n, f) => n + f.original.length + f.translated.length, 0), undo: c => { const s=c.workbook.getSheet(sheetId); applyPermutation(s, range, plan, formulas, true); emit(c.workbook,sheetId,range,c.source); }, redo: c => { const s=c.workbook.getSheet(sheetId); applyPermutation(s, range, plan, formulas, false); emit(c.workbook,sheetId,range,c.source); } }; }

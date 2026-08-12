@@ -5,9 +5,9 @@ import {
   CommandBus,
   createDefaultRegistry,
   type ApplyOperationsResult,
-} from "@opensheet/commands";
-import { toWorkbookSnapshot, Workbook, workbookFromSnapshot, Worksheet } from "@opensheet/core";
-import { HistoryManager, type HistoryOptions } from "@opensheet/history";
+} from "@injoysai/opensheet-commands";
+import { toWorkbookSnapshot, Workbook, workbookFromSnapshot, Worksheet } from "@injoysai/opensheet-core";
+import { HistoryManager, type HistoryOptions } from "@injoysai/opensheet-history";
 import {
   createBrowserCSVWorker,
   CSVWorkerTaskHandler,
@@ -16,14 +16,14 @@ import {
   type CSVWorkerRequest,
   type CSVWorkerResponse,
   type CSVWorkerTransport,
-} from "@opensheet/import-export";
+} from "@injoysai/opensheet-import-export";
 import {
   createPluginHost,
   type PluginCommandContext,
   type PluginFormulaFunction,
   type PluginHost,
   type PluginOperation,
-} from "@opensheet/plugin-api";
+} from "@injoysai/opensheet-plugin-api";
 import {
   parseRange,
   CELL_ERROR_TYPES,
@@ -39,8 +39,8 @@ import {
   type SupportedWorkbookSnapshot,
   type Unsubscribe,
   type WorkbookSnapshot,
-} from "@opensheet/shared";
-import type { FunctionImpl } from "@opensheet/formula-engine";
+} from "@injoysai/opensheet-shared";
+import type { FunctionImpl } from "@injoysai/opensheet-formula-engine";
 import type { ImportCSVResult, OpenSheetAPI, SheetInfo, WorkbookInfo } from "./api.js";
 import { FormulaEngine, type FormulaEngineOptions } from "./formula-engine.js";
 import { evaluateVisibleRows } from "./filter-engine.js";

@@ -9,7 +9,7 @@ import {
   type CellStoreFactory,
   type FilterSpec,
   type Range,
-} from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
 import { chunkedCellStoreFactory } from "./cell-store/chunked-store.js";
 import type { WorksheetView } from "./view.js";
 

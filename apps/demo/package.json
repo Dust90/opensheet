@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/demo",
+  "name": "@injoysai/opensheet-demo",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,15 +12,15 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@opensheet/clipboard": "workspace:*",
-    "@opensheet/core": "workspace:*",
-    "@opensheet/react": "workspace:*",
-    "@opensheet/renderer-canvas": "workspace:*",
+    "@injoysai/opensheet-clipboard": "workspace:*",
+    "@injoysai/opensheet-core": "workspace:*",
+    "@injoysai/opensheet-react": "workspace:*",
+    "@injoysai/opensheet-renderer-canvas": "workspace:*",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "zustand": "^5.0.14",
-    "@opensheet/runtime": "workspace:*",
-    "@opensheet/shared": "workspace:*"
+    "@injoysai/opensheet": "workspace:*",
+    "@injoysai/opensheet-shared": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

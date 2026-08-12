@@ -1,6 +1,6 @@
 // DirtyRegionTracker: ChangeEvent ranges → canvas pixel rects. Pure logic.
 
-import type { ChangeEvent, Range } from "@opensheet/shared";
+import type { ChangeEvent, Range } from "@injoysai/opensheet-shared";
 import type { AxisMetrics } from "./axis-metrics.js";
 import { physicalRangeToVisualRange, type RowProjection } from "./row-projection.js";
 import type { ViewportLayout } from "./viewport.js";

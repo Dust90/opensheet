@@ -11,18 +11,18 @@ import type {
   Unsubscribe,
   WorkbookSnapshot,
   SupportedWorkbookSnapshot,
-} from "@opensheet/shared";
-import type { WorksheetView } from "@opensheet/core";
+} from "@injoysai/opensheet-shared";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 import type {
   ApplyOperationsRequest,
   ApplyOperationsResult,
-} from "@opensheet/commands";
+} from "@injoysai/opensheet-commands";
 import type {
   CommandContribution,
   FormulaFunctionContribution,
   MenuItemContribution,
   OpenSheetPlugin,
-} from "@opensheet/plugin-api";
+} from "@injoysai/opensheet-plugin-api";
 
 export interface WorkbookInfo {
   id: string;

@@ -1,7 +1,7 @@
 // Workbook aggregate root + change-event bus with transaction buffering.
 
-import type { ChangeEvent, ChangeListener, Unsubscribe } from "@opensheet/shared";
-import { SheetError } from "@opensheet/shared";
+import type { ChangeEvent, ChangeListener, Unsubscribe } from "@injoysai/opensheet-shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import { StyleTable } from "./styles.js";
 import type { WorkbookView, WorksheetView } from "./view.js";
 import { Worksheet } from "./worksheet.js";

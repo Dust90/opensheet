@@ -1,7 +1,7 @@
 // Read-only view contracts. Renderers (M1) and external read paths depend on
 // these views only — mutation is possible exclusively through the Command Bus.
 
-import type { CellData, CellStyle, FilterSpec, Range } from "@opensheet/shared";
+import type { CellData, CellStyle, FilterSpec, Range } from "@injoysai/opensheet-shared";
 
 /**
  * Read-only view of a worksheet. Implementations may return internal objects

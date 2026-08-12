@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseFormula } from "../parser.js";
 import { evaluateExpr, type FormulaContext } from "../evaluate.js";
 import { createDefaultFunctions } from "../functions.js";
-import type { CellRef, CellValue } from "@opensheet/shared";
+import type { CellRef, CellValue } from "@injoysai/opensheet-shared";
 
 /** Test context backed by a plain map. */
 function makeContext(values: Record<string, CellValue>): FormulaContext {

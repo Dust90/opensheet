@@ -1,7 +1,7 @@
 // SelectionModel: single-range selection with active cell. Pure, no DOM.
 
-import type { CellAddress, Range } from "@opensheet/shared";
-import { normalizeRange } from "@opensheet/shared";
+import type { CellAddress, Range } from "@injoysai/opensheet-shared";
+import { normalizeRange } from "@injoysai/opensheet-shared";
 
 export interface SelectionState {
   /** The cell that receives keyboard input / editing. */

@@ -10,7 +10,7 @@ import {
   type FilterSpec,
   type WorkbookSnapshot,
   type WorkbookSnapshotV1,
-} from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
 
 function memoryStorage(seed: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...seed };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import { createOpenSheet } from "../create-opensheet.js";
 
 function namedCSV(text: string, name: string): Blob {

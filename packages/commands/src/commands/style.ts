@@ -4,8 +4,8 @@
 // formulas AND style references exactly (a styled-then-undone cell that had
 // a value but no style must keep its value).
 
-import type { CellData, CellStyle } from "@opensheet/shared";
-import { parseRange, SheetError } from "@opensheet/shared";
+import type { CellData, CellStyle } from "@injoysai/opensheet-shared";
+import { parseRange, SheetError } from "@injoysai/opensheet-shared";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 export interface RangeStylePayload {

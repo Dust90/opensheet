@@ -9,7 +9,7 @@
 //   range   A1:B2  (lexed as CELL COLON CELL; parser combines)
 //   op      + - * / ^ % & = <> < > <= >= ( ) , :
 
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 
 export type TokenType =
   | "number"

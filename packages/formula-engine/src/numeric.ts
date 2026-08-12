@@ -1,6 +1,6 @@
 // Numeric guards (M3.5): shared by the evaluator and the function registry.
 
-import type { CellValue } from "@opensheet/shared";
+import type { CellValue } from "@injoysai/opensheet-shared";
 
 /** Unified finite-number gate: any non-finite numeric result → #NUM!. */
 export function finiteNumber(value: number): CellValue {

@@ -1,4 +1,4 @@
-// @opensheet/shared — error contracts
+// @injoysai/opensheet-shared — error contracts
 
 export type SheetErrorCode =
   | "E_INVALID_ADDRESS"

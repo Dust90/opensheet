@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { findCells } from "../find-engine.js";
 import { createOpenSheet } from "../create-opensheet.js";
-import type { WorksheetView } from "@opensheet/core";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 const sheet = (cells: Record<string, { value: any; formula?: string }>): WorksheetView => ({ id:"s",name:"s",rowCount:10,columnCount:10,frozenRows:0,frozenColumns:0,cellCount:Object.keys(cells).length,filter:null,getCell:(r,c)=>cells[`${r}:${c}`],*cellEntries(){for(const [key,data] of Object.entries(cells)){const [row,col]=key.split(":").map(Number);yield [row!,col!,data] as any;}},getRowHeight:()=>undefined,getColumnWidth:()=>undefined,forEachCellInRange:()=>{} } as WorksheetView);
 const options = { query:"a",matchCase:false,wholeCell:false,searchIn:"values" as const,direction:"forward" as const };
 describe("findCells",()=>{

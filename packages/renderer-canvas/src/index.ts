@@ -1,4 +1,4 @@
-// @opensheet/renderer-canvas — dual-canvas grid renderer (Content + Overlay).
+// @injoysai/opensheet-renderer-canvas — dual-canvas grid renderer (Content + Overlay).
 
 export { SheetGrid } from "./grid.js";
 export type { SheetGridOptions } from "./grid.js";

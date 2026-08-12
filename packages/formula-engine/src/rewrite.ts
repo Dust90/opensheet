@@ -8,7 +8,7 @@
 // Implementation: parse → rewrite AST refs → serialize back to text, so the
 // stored formula source always matches what the evaluator parses.
 
-import { colToName } from "@opensheet/shared";
+import { colToName } from "@injoysai/opensheet-shared";
 import type { CellRef, Expr } from "./ast.js";
 import { parseFormula } from "./parser.js";
 

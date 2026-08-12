@@ -1,11 +1,11 @@
-import type { WorksheetView } from "@opensheet/core";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 import {
   isCellError,
   SheetError,
   validateDedupeSpec,
   type CellValue,
   type DedupeSpec,
-} from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
 
 /** A non-mutating description of stable row compaction for `range.dedupe`. */
 export interface DedupePlan {

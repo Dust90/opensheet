@@ -1,8 +1,8 @@
 // CommandBus: registry + transactions with inverse patch journal and
 // buffered events (ADR-0003).
 
-import type { Workbook } from "@opensheet/core";
-import { isSheetError, SheetError, type CellData, type ChangeSource } from "@opensheet/shared";
+import type { Workbook } from "@injoysai/opensheet-core";
+import { isSheetError, SheetError, type CellData, type ChangeSource } from "@injoysai/opensheet-shared";
 import { ApplyOperationsError, type ApplyOperationsResult } from "./operations.js";
 import { CommandRegistry } from "./registry.js";
 import type {

@@ -11,9 +11,9 @@
 // Insert journals are trivial inverses: inserting empty rows/cols is undone
 // by deleting exactly those rows/cols (cells were shifted, not copied).
 
-import { MAX_COLS, MAX_ROWS, SheetError, type CellData, type FilterSpec } from "@opensheet/shared";
-import { rewriteFormulaReferences, type StructureChange } from "@opensheet/formula-engine";
-import type { Worksheet } from "@opensheet/core";
+import { MAX_COLS, MAX_ROWS, SheetError, type CellData, type FilterSpec } from "@injoysai/opensheet-shared";
+import { rewriteFormulaReferences, type StructureChange } from "@injoysai/opensheet-formula-engine";
+import type { Worksheet } from "@injoysai/opensheet-core";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 export interface StructurePayload {

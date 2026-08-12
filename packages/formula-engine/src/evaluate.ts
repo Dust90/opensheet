@@ -11,8 +11,8 @@
 
 import type { CellRangeRef, CellRef, Expr } from "./ast.js";
 import { iterateRange, rangeBounds } from "./ast.js";
-import type { CellAddress, CellValue } from "@opensheet/shared";
-import { isCellError, type CellError } from "@opensheet/shared";
+import type { CellAddress, CellValue } from "@injoysai/opensheet-shared";
+import { isCellError, type CellError } from "@injoysai/opensheet-shared";
 import { FunctionRegistry, SPECIAL_FORM_NAMES } from "./functions.js";
 import { finiteNumber } from "./numeric.js";
 

@@ -1,2 +1,2 @@
-// @opensheet/react
+// @injoysai/opensheet-react
 export {};

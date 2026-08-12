@@ -1,4 +1,4 @@
-import type { FilterSpec, Range } from "@opensheet/shared";
+import type { FilterSpec, Range } from "@injoysai/opensheet-shared";
 
 /** True when an operation would touch physical rows hidden by a filter. */
 export function rowSpansIntersect(

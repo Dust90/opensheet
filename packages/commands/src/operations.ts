@@ -1,6 +1,6 @@
 // applyOperations wire format (public SDK boundary).
 
-import type { CellPrimitive, DedupeSpec, FilterSpec, SortSpec } from "@opensheet/shared";
+import type { CellPrimitive, DedupeSpec, FilterSpec, SortSpec } from "@injoysai/opensheet-shared";
 
 /** Operation set. */
 export type SheetOperation =
@@ -9,7 +9,7 @@ export type SheetOperation =
   | { type: "range.write"; range: string; values: CellPrimitive[][] }
   | { type: "formula.set"; range: string; formula: string }
   | { type: "sheet.freeze"; frozenRows: number; frozenColumns: number }
-  | { type: "range.style"; range: string; style: Partial<import("@opensheet/shared").CellStyle> }
+  | { type: "range.style"; range: string; style: Partial<import("@injoysai/opensheet-shared").CellStyle> }
   | { type: "row.insert"; at: number; count?: number }
   | { type: "row.delete"; at: number; count?: number }
   | { type: "column.insert"; at: number; count?: number }

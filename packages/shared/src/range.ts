@@ -1,4 +1,4 @@
-// @opensheet/shared — rectangular cell ranges
+// @injoysai/opensheet-shared — rectangular cell ranges
 
 import { formatAddress, parseCellRef } from "./address.js";
 import { SheetError } from "./errors.js";

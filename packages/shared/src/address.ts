@@ -1,4 +1,4 @@
-// @opensheet/shared — A1 address parsing/formatting
+// @injoysai/opensheet-shared — A1 address parsing/formatting
 
 import { SheetError } from "./errors.js";
 

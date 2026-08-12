@@ -1,6 +1,6 @@
 // Formula AST (M3.2).
 
-import type { CellAddress, CellValue } from "@opensheet/shared";
+import type { CellAddress, CellValue } from "@injoysai/opensheet-shared";
 
 export interface CellRef {
   row: number; // 0-based

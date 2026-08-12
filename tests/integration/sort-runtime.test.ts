@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOpenSheet } from "@opensheet/runtime";
+import { createOpenSheet } from "@injoysai/opensheet";
 
 describe("range.sort runtime formulas", () => {
   it("sorts by fresh computed values from preceding atomic operations", async () => {

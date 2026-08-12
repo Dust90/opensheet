@@ -1,6 +1,6 @@
 // Candidate A: string key "row:col" in a single Map.
 
-import type { CellData, CellStore, CellStoreFactory, Range } from "@opensheet/shared";
+import type { CellData, CellStore, CellStoreFactory, Range } from "@injoysai/opensheet-shared";
 
 export class StringKeyCellStore implements CellStore {
   private readonly map = new Map<string, CellData>();

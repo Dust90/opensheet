@@ -5,7 +5,7 @@
 // visualRowCount = 14.
 
 import { describe, expect, it } from "vitest";
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import { AxisMetrics } from "../axis-metrics.js";
 import {
   FilteredRowProjection,

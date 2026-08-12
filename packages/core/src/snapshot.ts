@@ -8,14 +8,14 @@ import type {
   WorkbookSnapshotV2,
   SupportedWorkbookSnapshot,
   WorksheetSnapshot,
-} from "@opensheet/shared";
-import { SheetError, WORKBOOK_SNAPSHOT_VERSION } from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
+import { SheetError, WORKBOOK_SNAPSHOT_VERSION } from "@injoysai/opensheet-shared";
 import { StyleTable } from "./styles.js";
 import { Workbook } from "./workbook.js";
 import { Worksheet } from "./worksheet.js";
 
 export function toWorksheetSnapshot(sheet: Worksheet): WorksheetSnapshot {
-  const cells: Record<string, import("@opensheet/shared").CellData> = {};
+  const cells: Record<string, import("@injoysai/opensheet-shared").CellData> = {};
   for (const [row, col, data] of sheet.cellEntries()) {
     cells[`${row}:${col}`] = { ...data };
   }

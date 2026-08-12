@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/react",
+  "name": "@injoysai/opensheet-react",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -23,9 +23,9 @@
     "react-dom": ">=18 <20"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*",
-    "@opensheet/renderer-canvas": "workspace:*",
-    "@opensheet/plugin-api": "workspace:*",
-    "@opensheet/runtime": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:*",
+    "@injoysai/opensheet-renderer-canvas": "workspace:*",
+    "@injoysai/opensheet-plugin-api": "workspace:*",
+    "@injoysai/opensheet": "workspace:*"
   }
 }

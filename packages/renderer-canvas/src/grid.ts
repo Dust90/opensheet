@@ -4,15 +4,15 @@
 // WorksheetView — it cannot mutate workbook data. All it emits back is
 // selection/scroll state via callbacks.
 
-import type { WorksheetView } from "@opensheet/core";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 import type {
   CellPrimitive,
   CellStyle,
   ChangeEvent,
   ChangeListener,
   Unsubscribe,
-} from "@opensheet/shared";
-import { isCellError, SheetError } from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
+import { isCellError, SheetError } from "@injoysai/opensheet-shared";
 import { AxisMetrics } from "./axis-metrics.js";
 import {
   cellRectInCanvas,
@@ -610,7 +610,7 @@ export class SheetGrid {
 
   private paintCellText(
     ctx: CanvasRenderingContext2D,
-    value: import("@opensheet/shared").CellValue,
+    value: import("@injoysai/opensheet-shared").CellValue,
     style: Readonly<CellStyle> | undefined,
     x: number,
     y: number,
@@ -1239,7 +1239,7 @@ export class SheetGrid {
 }
 
 /** Cell value → clipboard primitive (errors copy as their display text). */
-function cellPrimitiveOf(value: import("@opensheet/shared").CellValue | undefined): CellPrimitive {
+function cellPrimitiveOf(value: import("@injoysai/opensheet-shared").CellValue | undefined): CellPrimitive {
   if (value === undefined || value === null) return null;
   if (typeof value === "object") {
     // CellError

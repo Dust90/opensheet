@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/history",
+  "name": "@injoysai/opensheet-history",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*",
-    "@opensheet/commands": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:*",
+    "@injoysai/opensheet-commands": "workspace:*"
   }
 }

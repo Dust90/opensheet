@@ -5,10 +5,10 @@ import {
   ApplyOperationsError,
   CommandBus,
   createDefaultRegistry,
-} from "@opensheet/commands";
-import { toWorkbookSnapshot, Workbook, Worksheet } from "@opensheet/core";
-import { HistoryManager } from "@opensheet/history";
-import type { ChangeEvent } from "@opensheet/shared";
+} from "@injoysai/opensheet-commands";
+import { toWorkbookSnapshot, Workbook, Worksheet } from "@injoysai/opensheet-core";
+import { HistoryManager } from "@injoysai/opensheet-history";
+import type { ChangeEvent } from "@injoysai/opensheet-shared";
 
 function setup() {
   const workbook = new Workbook({ id: "wb", name: "B" });

@@ -50,6 +50,6 @@ hooks 是观察通道，不是 middleware：不能取消核心操作，也不能
 `pnpm check:boundaries`（CI）同时校验两层：
 
 1. 每个包的 `package.json` workspace 依赖 ⊆ 允许矩阵；
-2. `src/` 中实际 `import "@opensheet/x"` 语句 ⊆ 允许矩阵（测试文件豁免）。
+2. `src/` 中实际 OpenSheet workspace import 语句 ⊆ 允许矩阵（测试文件豁免）。
 
 规则示例：`core`/`plugin-api` 仅允许 `shared`；`renderer-canvas` 禁止 `react`；仅 `runtime` 可依赖全部功能包。

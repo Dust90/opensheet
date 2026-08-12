@@ -11,8 +11,8 @@
 //   - Journal captures the complete previous AND next CellData for
 //     undo/redo, so the dependency graph can be reconciled by the runtime.
 
-import { parseRange, SheetError, type CellData } from "@opensheet/shared";
-import { parseFormula } from "@opensheet/formula-engine";
+import { parseRange, SheetError, type CellData } from "@injoysai/opensheet-shared";
+import { parseFormula } from "@injoysai/opensheet-formula-engine";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 export interface FormulaSetPayload {

@@ -1,6 +1,6 @@
 // Command registry.
 
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import type { SheetCommand } from "./types.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -1,7 +1,7 @@
 // Dependency boundary enforcement (architecture guard, ADR-0002).
 // Two layers, both must hold:
 //   1. package.json dependencies of each package ⊆ allowlist
-//   2. actual `import ... from "@opensheet/x"` statements in src/ ⊆ allowlist
+//   2. actual workspace package imports in src/ ⊆ allowlist
 //
 // TypeScript's typechecker does NOT prevent architectural reverse imports;
 // this script does. Runs in CI (`pnpm check:boundaries`).
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-/** Allowlist: package → @opensheet/* packages it may depend on. */
+/** Allowlist: package → OpenSheet workspace packages it may depend on. */
 const ALLOWED = {
   shared: [],
   core: ["shared"],
@@ -28,6 +28,15 @@ const ALLOWED = {
 };
 
 const violations = [];
+const PACKAGE_PREFIX = "@injoysai/opensheet-";
+const RUNTIME_PACKAGE = "@injoysai/opensheet";
+
+function workspacePackageKey(dependency) {
+  if (dependency === RUNTIME_PACKAGE) return "runtime";
+  return dependency.startsWith(PACKAGE_PREFIX)
+    ? dependency.slice(PACKAGE_PREFIX.length)
+    : null;
+}
 
 for (const [pkg, allowed] of Object.entries(ALLOWED)) {
   const dir = join(root, "packages", pkg);
@@ -36,8 +45,8 @@ for (const [pkg, allowed] of Object.entries(ALLOWED)) {
   // Layer 1: manifest
   for (const section of ["dependencies", "devDependencies", "peerDependencies"]) {
     for (const dep of Object.keys(manifest[section] ?? {})) {
-      if (dep.startsWith("@opensheet/")) {
-        const name = dep.slice("@opensheet/".length);
+      const name = workspacePackageKey(dep);
+      if (name !== null) {
         if (!allowed.includes(name)) {
           violations.push(`${pkg}/package.json ${section}: "${dep}" is not allowed (allowed: ${allowed.join(", ") || "none"})`);
         }
@@ -47,12 +56,13 @@ for (const [pkg, allowed] of Object.entries(ALLOWED)) {
 
   // Layer 2: source imports (test files are not shipped and may import
   // anything in the workspace for fixtures)
-  const importRe = /(?:import|export)[^"']*from\s+["'](@opensheet\/[a-z-]+)["']/g;
+  const importRe = /(?:import|export)[^"']*from\s+["'](@injoysai\/opensheet(?:-[a-z-]+)?)["']/g;
   for (const file of walk(join(dir, "src"))) {
     if (file.includes("__tests__") || /\.(test|spec)\.tsx?$/.test(file)) continue;
     const text = readFileSync(file, "utf8");
     for (const match of text.matchAll(importRe)) {
-      const name = match[1].slice("@opensheet/".length);
+      const name = workspacePackageKey(match[1]);
+      if (name === null) continue;
       if (!allowed.includes(name)) {
         violations.push(`${relative(root, file)}: imports "${match[1]}" which is not allowed for ${pkg}`);
       }

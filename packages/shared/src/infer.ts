@@ -1,4 +1,4 @@
-// @opensheet/shared — primitive inference (editor + clipboard share this).
+// @injoysai/opensheet-shared — primitive inference (editor + clipboard share this).
 
 import type { CellPrimitive } from "./cell.js";
 

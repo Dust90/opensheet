@@ -1,4 +1,4 @@
-import { Worksheet } from "@opensheet/core";
+import { Worksheet } from "@injoysai/opensheet-core";
 import { describe, expect, it } from "vitest";
 import { buildSortPlan, conflictsWithFilter, rowSpansIntersect } from "../sort-plan.js";
 

@@ -1,4 +1,4 @@
-// @opensheet/runtime — composition root and public SDK entry point.
+// @injoysai/opensheet — composition root and public SDK entry point.
 
 export { createOpenSheet } from "./create-opensheet.js";
 export type { OpenSheetOptions } from "./create-opensheet.js";
@@ -31,5 +31,5 @@ export type {
   WorksheetSnapshotV1,
   WorksheetSnapshotV2,
   SupportedWorkbookSnapshot,
-} from "@opensheet/shared";
-export { SheetError } from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
+export { SheetError } from "@injoysai/opensheet-shared";

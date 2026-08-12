@@ -11,8 +11,8 @@
 //   postfix     %   (left-to-right with unary; we fold % into unary)
 //   primary     number | string | bool | null | cell | range | call | (expr)
 
-import { SheetError } from "@opensheet/shared";
-import { colToName, parseAddress } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
+import { colToName, parseAddress } from "@injoysai/opensheet-shared";
 import type { CellRef, Expr, FormulaParseResult } from "./ast.js";
 import { collectDependencies } from "./ast.js";
 import { tokenize, type Token } from "./lexer.js";

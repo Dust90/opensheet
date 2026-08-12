@@ -1,7 +1,7 @@
 // Command + journal contracts (inverse patch journal, ADR-0003).
 
-import type { Workbook, WorkbookView } from "@opensheet/core";
-import type { CellValue, ChangeKind, ChangeSource, Range } from "@opensheet/shared";
+import type { Workbook, WorkbookView } from "@injoysai/opensheet-core";
+import type { CellValue, ChangeKind, ChangeSource, Range } from "@injoysai/opensheet-shared";
 
 /** Minimal context available while undoing/redoing journal entries. */
 export interface JournalReplayContext {
@@ -54,7 +54,7 @@ export interface JournalBatch {
   readonly approxBytes: number;
 }
 
-/** Implemented by @opensheet/history; injected into the bus (no reverse dep). */
+/** Implemented by @injoysai/opensheet-history; injected into the bus (no reverse dep). */
 export interface HistorySink {
   push(batch: JournalBatch): void;
 }

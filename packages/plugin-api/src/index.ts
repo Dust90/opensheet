@@ -1,5 +1,5 @@
-// @opensheet/plugin-api — plugin contracts and in-memory host.
-// Depends only on @opensheet/shared. No runtime, no React, no OpenSheetAPI.
+// @injoysai/opensheet-plugin-api — plugin contracts and in-memory host.
+// Depends only on @injoysai/opensheet-shared. No runtime, no React, no OpenSheetAPI.
 
 export type {
   CommandContribution,

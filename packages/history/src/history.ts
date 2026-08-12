@@ -1,6 +1,6 @@
 // Undo/redo history with dual limits: entry count AND retained memory.
 
-import type { CommandBus, HistorySink, JournalBatch } from "@opensheet/commands";
+import type { CommandBus, HistorySink, JournalBatch } from "@injoysai/opensheet-commands";
 
 export interface HistoryOptions {
   /** Max entries on the undo stack. Default 100. */

@@ -1,4 +1,4 @@
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 
 export interface CSVOptions {
   /** Single-character delimiter. Defaults to RFC 4180 comma. */

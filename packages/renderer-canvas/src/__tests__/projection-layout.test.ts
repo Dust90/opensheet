@@ -5,8 +5,8 @@
 // Scenario: 20 rows × 3 cols, filter range 5..14, visible [5,7,9,12].
 
 import { describe, expect, it } from "vitest";
-import { SheetError, type CellData, type Range } from "@opensheet/shared";
-import type { WorksheetView } from "@opensheet/core";
+import { SheetError, type CellData, type Range } from "@injoysai/opensheet-shared";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 import { AxisMetrics } from "../axis-metrics.js";
 import { cellRectInCanvas, hitTestCell } from "../coordinate-mapper.js";
 import { DirtyRegionTracker } from "../dirty-region.js";

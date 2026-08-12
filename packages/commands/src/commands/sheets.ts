@@ -1,7 +1,7 @@
 // Sheet lifecycle commands (M0: sheet.create only).
 
-import { Worksheet } from "@opensheet/core";
-import { SheetError } from "@opensheet/shared";
+import { Worksheet } from "@injoysai/opensheet-core";
+import { SheetError } from "@injoysai/opensheet-shared";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 export interface SheetCreatePayload {

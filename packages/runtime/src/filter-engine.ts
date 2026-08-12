@@ -2,7 +2,7 @@
 // on WorksheetView; it neither mutates worksheet state nor knows about Grid
 // projections, commands, or renderer concerns.
 
-import type { WorksheetView } from "@opensheet/core";
+import type { WorksheetView } from "@injoysai/opensheet-core";
 import {
   isCellError,
   SheetError,
@@ -10,7 +10,7 @@ import {
   type CellPrimitive,
   type FilterCondition,
   type FilterSpec,
-} from "@opensheet/shared";
+} from "@injoysai/opensheet-shared";
 
 /**
  * Whether one physical row satisfies every condition in `spec`.
@@ -61,7 +61,7 @@ function rowMatchesFilterUnchecked(sheet: WorksheetView, physicalRow: number, sp
   });
 }
 
-function matchesCondition(value: import("@opensheet/shared").CellValue, condition: FilterCondition): boolean {
+function matchesCondition(value: import("@injoysai/opensheet-shared").CellValue, condition: FilterCondition): boolean {
   // Errors are values for formula display. They are not blank, but do not
   // match ordinary comparison predicates (including notEquals).
   if (isCellError(value)) return condition.operator === "notBlank";

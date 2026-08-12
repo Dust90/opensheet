@@ -1,4 +1,4 @@
-import { SheetError, type SheetErrorCode } from "@opensheet/shared";
+import { SheetError, type SheetErrorCode } from "@injoysai/opensheet-shared";
 import { validateCSVOptions, type CSVOptions } from "./csv.js";
 
 export type CSVWorkerRequest =

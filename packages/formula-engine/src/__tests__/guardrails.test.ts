@@ -4,7 +4,7 @@ import { evaluateExpr, makeBudget, type FormulaContext } from "../evaluate.js";
 import { createDefaultFunctions } from "../functions.js";
 import { rewriteFormulaReferences, exprToString } from "../rewrite.js";
 import { DependencyGraph } from "../dependency.js";
-import type { CellRef, CellValue } from "@opensheet/shared";
+import type { CellRef, CellValue } from "@injoysai/opensheet-shared";
 
 function makeContext(values: Record<string, CellValue>): FormulaContext {
   return {

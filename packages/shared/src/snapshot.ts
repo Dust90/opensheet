@@ -1,4 +1,4 @@
-// @opensheet/shared — persistence (snapshot) contracts
+// @injoysai/opensheet-shared — persistence (snapshot) contracts
 
 import type { CellData, CellStyle } from "./cell.js";
 import type { FilterSpec } from "./data-operations.js";

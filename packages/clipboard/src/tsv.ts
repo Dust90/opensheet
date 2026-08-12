@@ -1,9 +1,9 @@
-// @opensheet/clipboard — TSV (tab-separated) serialization for the system
+// @injoysai/opensheet-clipboard — TSV (tab-separated) serialization for the system
 // clipboard. Pure logic, no DOM/navigator: hosts read/write the clipboard
 // themselves and use these helpers to encode/decode cell matrices.
 
-import type { CellPrimitive } from "@opensheet/shared";
-import { inferPrimitive } from "@opensheet/shared";
+import type { CellPrimitive } from "@injoysai/opensheet-shared";
+import { inferPrimitive } from "@injoysai/opensheet-shared";
 
 /**
  * Encode a rectangular cell matrix as TSV.

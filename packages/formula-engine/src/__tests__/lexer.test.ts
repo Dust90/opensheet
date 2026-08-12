@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tokenize } from "../lexer.js";
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 
 describe("tokenize", () => {
   it("tokenizes numbers, strings, cells and operators", () => {

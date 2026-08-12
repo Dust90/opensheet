@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/formula-engine",
+  "name": "@injoysai/opensheet-formula-engine",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*",
-    "@opensheet/core": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:*",
+    "@injoysai/opensheet-core": "workspace:*"
   }
 }

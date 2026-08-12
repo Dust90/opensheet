@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import { validateCSVWorkerRequest } from "../csv-worker-protocol.js";
 
 describe("CSV worker protocol", () => {

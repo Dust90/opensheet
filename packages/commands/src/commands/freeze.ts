@@ -1,6 +1,6 @@
 // sheet.freeze: set frozen row/column counts.
 
-import { SheetError } from "@opensheet/shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 
 export interface SheetFreezePayload {

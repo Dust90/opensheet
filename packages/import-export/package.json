@@ -1,5 +1,5 @@
 {
-  "name": "@opensheet/import-export",
+  "name": "@injoysai/opensheet-import-export",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -23,6 +23,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opensheet/shared": "workspace:*"
+    "@injoysai/opensheet-shared": "workspace:*"
   }
 }

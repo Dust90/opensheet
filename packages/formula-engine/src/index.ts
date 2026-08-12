@@ -1,4 +1,4 @@
-// @opensheet/formula-engine — M3 formula kernel (no runtime wiring yet).
+// @injoysai/opensheet-formula-engine — M3 formula kernel (no runtime wiring yet).
 
 export { tokenize } from "./lexer.js";
 export type { Token, TokenType } from "./lexer.js";

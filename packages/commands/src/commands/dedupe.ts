@@ -1,5 +1,5 @@
-import { SheetError, type CellData, type DedupeSpec, type Range, validateDedupeSpec } from "@opensheet/shared";
-import { translateFormulaReferences } from "@opensheet/formula-engine";
+import { SheetError, type CellData, type DedupeSpec, type Range, validateDedupeSpec } from "@injoysai/opensheet-shared";
+import { translateFormulaReferences } from "@injoysai/opensheet-formula-engine";
 import type { CommandOutcome, JournalEntry, SheetCommand } from "../types.js";
 import { conflictsWithFilter } from "../data-operation-conflicts.js";
 import { buildDedupePlan, type DedupePlan } from "../dedupe-plan.js";
@@ -45,7 +45,7 @@ function cloneDedupeSpec(spec: DedupeSpec): DedupeSpec {
   return { range: { ...spec.range }, hasHeader: spec.hasHeader, keyColumnOffsets: [...spec.keyColumnOffsets], keep: "first" };
 }
 
-function collectTranslations(sheet: import("@opensheet/core").Worksheet, range: Range, plan: DedupePlan): FormulaMove[] {
+function collectTranslations(sheet: import("@injoysai/opensheet-core").Worksheet, range: Range, plan: DedupePlan): FormulaMove[] {
   const moves: FormulaMove[] = [];
   for (let destinationOffset = 0; destinationOffset < plan.keptRowCount; destinationOffset += 1) {
     const sourceOffset = plan.keptSourceOffsets[destinationOffset]!;
@@ -68,7 +68,7 @@ function collectTranslations(sheet: import("@opensheet/core").Worksheet, range: 
 }
 
 function captureSuffix(
-  sheet: import("@opensheet/core").Worksheet,
+  sheet: import("@injoysai/opensheet-core").Worksheet,
   range: Range,
   bodyStartRow: number,
   firstChangedOffset: number,
@@ -83,7 +83,7 @@ function captureSuffix(
   return cells;
 }
 
-function clearSuffix(sheet: import("@opensheet/core").Worksheet, range: Range, bodyStartRow: number, firstChangedOffset: number): void {
+function clearSuffix(sheet: import("@injoysai/opensheet-core").Worksheet, range: Range, bodyStartRow: number, firstChangedOffset: number): void {
   const firstRow = bodyStartRow + firstChangedOffset;
   for (let row = firstRow; row <= range.endRow; row += 1) {
     for (let col = range.startCol; col <= range.endCol; col += 1) sheet.deleteCell(row, col);
@@ -91,7 +91,7 @@ function clearSuffix(sheet: import("@opensheet/core").Worksheet, range: Range, b
 }
 
 function applyCompaction(
-  sheet: import("@opensheet/core").Worksheet,
+  sheet: import("@injoysai/opensheet-core").Worksheet,
   range: Range,
   plan: DedupePlan,
   formulas: readonly FormulaMove[],
@@ -117,7 +117,7 @@ function applyCompaction(
 }
 
 function restoreSuffix(
-  sheet: import("@opensheet/core").Worksheet,
+  sheet: import("@injoysai/opensheet-core").Worksheet,
   range: Range,
   bodyStartRow: number,
   firstChangedOffset: number,
@@ -129,7 +129,7 @@ function restoreSuffix(
   }
 }
 
-function emit(workbook: import("@opensheet/core").Workbook, sheetId: string, range: Range, source: import("@opensheet/shared").ChangeSource): void {
+function emit(workbook: import("@injoysai/opensheet-core").Workbook, sheetId: string, range: Range, source: import("@injoysai/opensheet-shared").ChangeSource): void {
   workbook.emit({ workbookId: workbook.id, sheetId, changes: [{ range, kind: "reorder" }], source, batch: false });
 }
 

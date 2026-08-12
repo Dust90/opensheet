@@ -1,7 +1,7 @@
 // Candidate B: numeric key (row * KEY_STRIDE + col) in a single Map.
 
-import type { CellData, CellStore, CellStoreFactory, Range } from "@opensheet/shared";
-import { SheetError } from "@opensheet/shared";
+import type { CellData, CellStore, CellStoreFactory, Range } from "@injoysai/opensheet-shared";
+import { SheetError } from "@injoysai/opensheet-shared";
 
 /**
  * Stride between rows in the numeric key space. 2^20 = 1,048,576 columns of
