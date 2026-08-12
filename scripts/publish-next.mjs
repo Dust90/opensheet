@@ -29,7 +29,7 @@ const manifests = publicPackages.map((directory) => ({
   ),
 }));
 const version = manifests[0].manifest.version;
-const confirmation = process.argv[2];
+const confirmation = process.argv.slice(2).find((argument) => argument !== "--");
 
 if (!/^\d+\.\d+\.\d+-next\.\d+$/.test(version)) {
   throw new Error(`Expected a next prerelease version, received ${version}`);
