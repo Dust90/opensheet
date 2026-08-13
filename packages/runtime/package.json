@@ -1,6 +1,6 @@
 {
   "name": "@injoysai/opensheet",
-  "version": "0.1.0-next.0",
+  "version": "0.1.0-next.1",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -28,12 +28,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@injoysai/opensheet-commands": "workspace:0.1.0-next.0",
-    "@injoysai/opensheet-core": "workspace:0.1.0-next.0",
-    "@injoysai/opensheet-history": "workspace:0.1.0-next.0",
-    "@injoysai/opensheet-plugin-api": "workspace:0.1.0-next.0",
-    "@injoysai/opensheet-shared": "workspace:0.1.0-next.0",
-    "@injoysai/opensheet-formula-engine": "workspace:0.1.0-next.0",
-    "@injoysai/opensheet-import-export": "workspace:0.1.0-next.0"
+    "@injoysai/opensheet-commands": "workspace:0.1.0-next.1",
+    "@injoysai/opensheet-core": "workspace:0.1.0-next.1",
+    "@injoysai/opensheet-history": "workspace:0.1.0-next.1",
+    "@injoysai/opensheet-plugin-api": "workspace:0.1.0-next.1",
+    "@injoysai/opensheet-shared": "workspace:0.1.0-next.1",
+    "@injoysai/opensheet-formula-engine": "workspace:0.1.0-next.1",
+    "@injoysai/opensheet-import-export": "workspace:0.1.0-next.1"
   }
 }
