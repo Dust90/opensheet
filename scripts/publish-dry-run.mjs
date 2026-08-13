@@ -1,5 +1,7 @@
 // `pnpm release:dry-run` — validate exactly the public package allowlist
-// against npmjs.org without publishing anything.
+// against npmjs.org without publishing anything. Use pnpm publish here:
+// pnpm rewrites workspace: dependencies in the packed manifest; npm publish
+// does not.
 
 import { execFileSync } from "node:child_process";
 
@@ -17,7 +19,7 @@ const publicPackages = [
 for (const directory of publicPackages) {
   console.log(`\nDry-running packages/${directory}`);
   execFileSync(
-    "npm",
+    "pnpm",
     [
       "publish",
       "--dry-run",
@@ -27,6 +29,7 @@ for (const directory of publicPackages) {
       "next",
       "--registry",
       "https://registry.npmjs.org/",
+      "--no-git-checks",
     ],
     {
       cwd: new URL(`../packages/${directory}/`, import.meta.url),

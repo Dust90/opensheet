@@ -1,6 +1,7 @@
 // `pnpm release:publish-next -- 0.1.0-next.0` — publish the fixed
 // public package allowlist in dependency order. The explicit version argument
-// prevents an accidental release of a different manifest version.
+// prevents an accidental release of a different manifest version. Publish via
+// pnpm so workspace: dependencies are rewritten in the registry manifest.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -76,8 +77,17 @@ execFileSync(process.execPath, ["scripts/publish-dry-run.mjs"], {
 for (const { directory, manifest } of manifests) {
   console.log(`\nPublishing ${manifest.name}@${version}`);
   execFileSync(
-    "npm",
-    ["publish", "--access", "public", "--tag", "next", "--registry", registry],
+    "pnpm",
+    [
+      "publish",
+      "--access",
+      "public",
+      "--tag",
+      "next",
+      "--registry",
+      registry,
+      "--no-git-checks",
+    ],
     {
       cwd: new URL(`../packages/${directory}/`, import.meta.url),
       stdio: "inherit",
